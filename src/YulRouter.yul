@@ -13,10 +13,8 @@ object "YulRouter" {
 
     object "Runtime" {
         code {
-            let mask160 := 0xffffffffffffffffffffffffffffffffffffffff
-
             codecopy(0x80, sub(codesize(), 0x40), 0x40)
-            let core := and(mload(0x80), mask160)
+            let core := mload(0x80)
             let self := mload(0xa0)
 
             if iszero(eq(address(), self)) {
