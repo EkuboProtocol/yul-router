@@ -11,9 +11,12 @@ import {
   size,
 } from "viem";
 
-export const ROUTER_SELECTOR = "0x00000002" as const;
 export const MIN_SQRT_RATIO = 4611797791050542631n;
 export const MAX_SQRT_RATIO = 79227682466138141934206691491n;
+export const MIN_CALCULATED_AMOUNT_THRESHOLD = minInt128;
+export const MAX_CALCULATED_AMOUNT_THRESHOLD = maxInt128;
+export const MAX_MULTIHOP_LENGTH = 256;
+export const MAX_HOP_LENGTH = 256;
 
 export interface PoolKey {
   token0: Address;
@@ -52,6 +55,19 @@ export interface WrapperHop {
 
 export type Hop = CoreHop | ForwardedHop | Ve33Hop | WrapperHop;
 
+export interface MultiHop {
+  specifiedAmount: bigint;
+  hops: readonly Hop[];
+}
+
+export interface EncodeRoutesParameters {
+  specifiedToken: Address;
+  calculatedToken: Address;
+  calculatedAmountThreshold?: bigint;
+  recipient?: Address;
+  multiHops: readonly MultiHop[];
+}
+
 export interface EncodeRouteParameters {
   specifiedToken: Address;
   calculatedToken: Address;
@@ -61,102 +77,147 @@ export interface EncodeRouteParameters {
   hops: readonly Hop[];
 }
 
+export type Parameters = EncodeRoutesParameters;
+
 export function encodeRoute(params: EncodeRouteParameters): Hex {
+  const { specifiedAmount, hops, ...shared } = params;
+  return encodeRoutes({
+    ...shared,
+    multiHops: [{ specifiedAmount, hops }],
+  });
+}
+
+export function generateCalldata(params: EncodeRoutesParameters): Hex {
+  return encodeRoutes(params);
+}
+
+export function encodeRoutes(params: EncodeRoutesParameters): Hex {
   const {
     specifiedToken,
     calculatedToken,
-    specifiedAmount,
-    calculatedAmountThreshold = 0n,
+    calculatedAmountThreshold,
     recipient,
-    hops,
+    multiHops,
   } = params;
 
-  if (hops.length < 1 || hops.length > 255) {
-    throw new Error("hops length must be between 1 and 255");
+  if (multiHops.length < 1 || multiHops.length > MAX_MULTIHOP_LENGTH) {
+    throw new Error(`multiHops length must be between 1 and ${MAX_MULTIHOP_LENGTH}`);
   }
-  assertInt128(specifiedAmount, "specifiedAmount");
-  assertInt128(calculatedAmountThreshold, "calculatedAmountThreshold");
 
   const specified = getAddress(specifiedToken);
   const calculated = getAddress(calculatedToken);
+  let isExactOut: boolean | undefined;
+  const encodedMultiHops: Hex[] = [];
 
-  let currentToken = specified;
-  const encodedHops: Hex[] = [];
+  for (const multiHop of multiHops) {
+    const { specifiedAmount, hops } = multiHop;
+    assertInt128(specifiedAmount, "specifiedAmount");
 
-  for (const hop of hops) {
-    switch (hop.type) {
-      case "core": {
-        const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
-        encodedHops.push(encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead));
-        currentToken = nextToken;
-        break;
+    if (specifiedAmount !== 0n) {
+      const multiHopExactOut = specifiedAmount < 0n;
+      if (isExactOut !== undefined && isExactOut !== multiHopExactOut) {
+        throw new Error("mixed exact-out / exact-in multi-hops");
       }
-      case "forwarded": {
-        const { poolKey, forwardee } = hop;
-        const { nextToken } = resolvePoolHop(currentToken, poolKey);
-        encodedHops.push(
-          concatHex([
-            "0x01",
-            encodeAddress(forwardee),
-            encodePoolKey(poolKey),
-            encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-            encodeSkipAhead(hop.skipAhead),
-          ]),
-        );
-        currentToken = nextToken;
-        break;
-      }
-      case "ve33": {
-        const { poolKey, forwardee } = hop;
-        const { nextToken } = resolvePoolHop(currentToken, poolKey);
-        encodedHops.push(
-          concatHex([
-            "0x03",
-            encodeAddress(forwardee),
-            encodePoolKey(poolKey),
-            encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-            encodeSkipAhead(hop.skipAhead),
-          ]),
-        );
-        currentToken = nextToken;
-        break;
-      }
-      case "wrapper": {
-        const underlying = getAddress(hop.underlying);
-        const wrapped = getAddress(hop.wrapped);
-        if (hexToBigInt(underlying) === hexToBigInt(wrapped)) {
-          throw new Error("underlying and wrapped token must differ");
+      isExactOut = multiHopExactOut;
+    }
+
+    if (hops.length < 1 || hops.length > MAX_HOP_LENGTH) {
+      throw new Error(`each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`);
+    }
+
+    let currentToken = specified;
+    const encodedHops: Hex[] = [];
+
+    for (const hop of hops) {
+      switch (hop.type) {
+        case "core": {
+          const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
+          encodedHops.push(encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead));
+          currentToken = nextToken;
+          break;
         }
-        if (currentToken === underlying) {
-          currentToken = wrapped;
-        } else if (currentToken === wrapped) {
-          currentToken = underlying;
-        } else {
-          throw new Error("wrapper hop is disconnected");
+        case "forwarded": {
+          const { poolKey, forwardee } = hop;
+          const { nextToken } = resolvePoolHop(currentToken, poolKey);
+          encodedHops.push(
+            concatHex([
+              "0x01",
+              encodeAddress(forwardee),
+              encodePoolKey(poolKey),
+              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+              encodeSkipAhead(hop.skipAhead),
+            ]),
+          );
+          currentToken = nextToken;
+          break;
         }
-        encodedHops.push(concatHex(["0x02", encodeAddress(underlying), encodeAddress(wrapped)]));
-        break;
+        case "ve33": {
+          const { poolKey, forwardee } = hop;
+          const { nextToken } = resolvePoolHop(currentToken, poolKey);
+          encodedHops.push(
+            concatHex([
+              "0x03",
+              encodeAddress(forwardee),
+              encodePoolKey(poolKey),
+              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+              encodeSkipAhead(hop.skipAhead),
+            ]),
+          );
+          currentToken = nextToken;
+          break;
+        }
+        case "wrapper": {
+          const underlying = getAddress(hop.underlying);
+          const wrapped = getAddress(hop.wrapped);
+          if (hexToBigInt(underlying) === hexToBigInt(wrapped)) {
+            throw new Error("underlying and wrapped token must differ");
+          }
+          if (currentToken === underlying) {
+            currentToken = wrapped;
+          } else if (currentToken === wrapped) {
+            currentToken = underlying;
+          } else {
+            throw new Error("wrapper hop is disconnected");
+          }
+          encodedHops.push(concatHex(["0x02", encodeAddress(underlying), encodeAddress(wrapped)]));
+          break;
+        }
       }
     }
+
+    if (currentToken !== calculated) {
+      throw new Error("calculatedToken does not match multi-hop output");
+    }
+
+    encodedMultiHops.push(
+      concatHex([
+        encodeInt128(specifiedAmount),
+        numberToHex(hops.length - 1, { size: 1 }),
+        ...encodedHops,
+      ]),
+    );
   }
 
-  if (currentToken !== calculated) {
-    throw new Error("calculatedToken does not match final hop output");
+  const threshold =
+    calculatedAmountThreshold ??
+    (isExactOut === true ? MIN_CALCULATED_AMOUNT_THRESHOLD : 0n);
+  assertInt128(threshold, "calculatedAmountThreshold");
+
+  if (threshold !== 0n && isExactOut !== undefined && (threshold < 0n) !== isExactOut) {
+    throw new Error("calculatedAmountThreshold sign and specified amount signs have to match");
   }
 
   const flags = recipient ? 1 : 0;
   const header = concatHex([
-    ROUTER_SELECTOR,
     numberToHex(flags, { size: 1 }),
-    numberToHex(hops.length, { size: 1 }),
+    numberToHex(multiHops.length - 1, { size: 1 }),
     encodeAddress(specified),
     encodeAddress(calculated),
-    encodeInt128(specifiedAmount),
-    encodeInt128(calculatedAmountThreshold),
+    encodeInt128(threshold),
     ...(recipient ? [encodeAddress(recipient)] : []),
   ]);
 
-  return concatHex([header, ...encodedHops]);
+  return concatHex([header, ...encodedMultiHops]);
 }
 
 function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {
@@ -167,10 +228,10 @@ function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {
   }
 
   if (currentToken === token0) {
-    return { poolKey: { ...poolKey, token0, token1 }, isToken1: false, nextToken: token1 };
+    return { nextToken: token1 };
   }
   if (currentToken === token1) {
-    return { poolKey: { ...poolKey, token0, token1 }, isToken1: true, nextToken: token0 };
+    return { nextToken: token0 };
   }
 
   throw new Error("pool hop is disconnected");

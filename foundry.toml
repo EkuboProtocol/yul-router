@@ -4,13 +4,12 @@ evm_version = "osaka"
 via_ir = true
 ffi = true
 fs_permissions = [
-    { access = "read", path = "../huff-router/contracts/v3-artifacts/" },
     { access = "read", path = "out/" }
 ]
 allow_paths = [
-    "../huff-router/contracts/lib/evm-contracts/src",
-    "../huff-router/contracts/lib/forge-std/src",
-    "../huff-router/contracts/lib/solady/src"
+    "lib/evm-contracts/src",
+    "lib/forge-std/src",
+    "lib/solady/src"
 ]
 
 [fmt]

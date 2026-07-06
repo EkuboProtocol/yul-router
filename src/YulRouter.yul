@@ -24,29 +24,27 @@ object "YulRouter" {
                 revertSelector(0xa1c0d6e5) // DelegateCall()
             }
 
-            switch shr(224, calldataload(0))
-            case 0 {
-                if iszero(eq(caller(), core)) {
-                    revertSelector(0x62279cff) // CoreOnly()
+            if eq(caller(), core) {
+                switch shr(224, calldataload(0))
+                case 0 {
+                    locked(core)
                 }
-                locked(core)
-            }
-            case 1 {
-                revertSelector(0x99f22abd) // ForwardNotAllowed()
-            }
-            case 2 {
-                lock(core)
-            }
-            default {
-                revertSelector(0x48f5c3ed) // InvalidCaller()
+                case 1 {
+                    revertSelector(0x99f22abd) // ForwardNotAllowed()
+                }
+                default {
+                    revertSelector(0x48f5c3ed) // InvalidCaller()
+                }
             }
 
+            lock(core)
+
             function lock(coreAddress) {
-                let size := sub(calldatasize(), 4)
+                let size := calldatasize()
                 let ptr := mload(0x40)
 
                 mstore(ptr, shl(224, 0xf83d08ba)) // lock()
-                calldatacopy(add(ptr, 4), 4, size)
+                calldatacopy(add(ptr, 4), 0, size)
                 mstore(add(add(ptr, 4), size), caller())
                 mstore(add(add(ptr, 0x24), size), callvalue())
 
@@ -69,138 +67,195 @@ object "YulRouter" {
                 let nativeRemaining := calldataload(add(routeEnd, 0x20))
 
                 let offset := 0x24
+
+                if gt(add(offset, 58), routeEnd) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+
                 let flagsWord := calldataload(offset)
                 let flags := byte(0, flagsWord)
-                let hopsRemaining := byte(1, flagsWord)
-
-                if iszero(hopsRemaining) {
-                    revertSelector(0xee7d6c3a) // InvalidHopType()
-                }
+                let multiHopsRemaining := add(byte(1, flagsWord), 1)
 
                 let specifiedToken := shr(96, calldataload(add(offset, 2)))
                 let calculatedToken := shr(96, calldataload(add(offset, 22)))
-                let specifiedAmount := signextend(15, shr(128, calldataload(add(offset, 42))))
-                let threshold := signextend(15, shr(128, calldataload(add(offset, 58))))
-                offset := add(offset, 74)
+                let threshold := signextend(15, shr(128, calldataload(add(offset, 42))))
+                offset := add(offset, 58)
 
                 let recipient := payer
                 if and(flags, 1) {
+                    if gt(add(offset, 20), routeEnd) {
+                        revertSelector(0x84e505d2) // InvalidRoute()
+                    }
                     recipient := shr(96, calldataload(offset))
                     offset := add(offset, 20)
                 }
 
-                let currentToken := specifiedToken
-                let currentAmount := specifiedAmount
+                let totalSpecified := 0
+                let totalCalculated := 0
+                let exactOutKnown := 0
+                let exactOut := 0
 
-                for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
-                    let hopType := byte(0, calldataload(offset))
+                for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
+                    if gt(add(offset, 17), routeEnd) {
+                        revertSelector(0x84e505d2) // InvalidRoute()
+                    }
+
+                    let currentToken := specifiedToken
+                    let currentAmount := signextend(15, shr(128, calldataload(offset)))
+                    offset := add(offset, 16)
+
+                    totalSpecified := add(totalSpecified, currentAmount)
+
+                    if currentAmount {
+                        let routeExactOut := slt(currentAmount, 0)
+                        if exactOutKnown {
+                            if xor(exactOut, routeExactOut) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+                        }
+                        exactOutKnown := 1
+                        exactOut := routeExactOut
+                    }
+
+                    let hopsRemaining := add(byte(0, calldataload(offset)), 1)
                     offset := add(offset, 1)
 
-                    switch hopType
-                    case 0 {
-                        let token0 := shr(96, calldataload(offset))
-                        let token1 := shr(96, calldataload(add(offset, 20)))
-                        let config := calldataload(add(offset, 40))
-                        let sqrtRatioLimit := shr(160, calldataload(add(offset, 72)))
-                        let skipAhead := and(shr(224, calldataload(add(offset, 84))), 0x7fffffff)
-                        offset := add(offset, 88)
-
-                        let isToken1 := resolveDirection(currentToken, token0, token1)
-                        let isExactOut := slt(currentAmount, 0)
-
-                        if iszero(sqrtRatioLimit) {
-                            sqrtRatioLimit := minSqrtRatio
-                            if xor(isExactOut, isToken1) {
-                                sqrtRatioLimit := maxSqrtRatio
-                            }
-                        }
-
-                        let update := coreSwap(coreAddress, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
-                        currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
-                    }
-                    case 1 {
-                        let forwardee := shr(96, calldataload(offset))
-                        let token0 := shr(96, calldataload(add(offset, 20)))
-                        let token1 := shr(96, calldataload(add(offset, 40)))
-                        let config := calldataload(add(offset, 60))
-                        let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
-                        let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
-                        offset := add(offset, 108)
-
-                        let isToken1 := resolveDirection(currentToken, token0, token1)
-                        let isExactOut := slt(currentAmount, 0)
-
-                        if iszero(sqrtRatioLimit) {
-                            sqrtRatioLimit := minSqrtRatio
-                            if xor(isExactOut, isToken1) {
-                                sqrtRatioLimit := maxSqrtRatio
-                            }
-                        }
-
-                        let update := forwardedSwap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
-                        currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
-                    }
-                    case 2 {
-                        let underlying := shr(96, calldataload(offset))
-                        let wrapped := shr(96, calldataload(add(offset, 20)))
-                        offset := add(offset, 40)
-
-                        let forwardAmount := currentAmount
-                        let tokenBeforeWrapper := currentToken
-                        if eq(tokenBeforeWrapper, underlying) {
-                            currentToken := wrapped
-                        }
-
-                        if eq(tokenBeforeWrapper, wrapped) {
-                            forwardAmount := sub(0, currentAmount)
-                            currentToken := underlying
-                        }
-
-                        if and(iszero(eq(tokenBeforeWrapper, underlying)), iszero(eq(tokenBeforeWrapper, wrapped))) {
+                    for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
+                        if iszero(lt(offset, routeEnd)) {
                             revertSelector(0x84e505d2) // InvalidRoute()
                         }
 
-                        forwardWrapper(coreAddress, wrapped, forwardAmount)
-                    }
-                    case 3 {
-                        let forwardee := shr(96, calldataload(offset))
-                        let token0 := shr(96, calldataload(add(offset, 20)))
-                        let token1 := shr(96, calldataload(add(offset, 40)))
-                        let config := calldataload(add(offset, 60))
-                        let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
-                        let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
-                        offset := add(offset, 108)
+                        let hopType := byte(0, calldataload(offset))
+                        offset := add(offset, 1)
 
-                        let isToken1 := resolveDirection(currentToken, token0, token1)
-                        let isExactOut := slt(currentAmount, 0)
-
-                        if iszero(sqrtRatioLimit) {
-                            sqrtRatioLimit := minSqrtRatio
-                            if xor(isExactOut, isToken1) {
-                                sqrtRatioLimit := maxSqrtRatio
+                        switch hopType
+                        case 0 {
+                            if gt(add(offset, 88), routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
                             }
-                        }
+                            let token0 := shr(96, calldataload(offset))
+                            let token1 := shr(96, calldataload(add(offset, 20)))
+                            let config := calldataload(add(offset, 40))
+                            let sqrtRatioLimit := shr(160, calldataload(add(offset, 72)))
+                            let skipAhead := and(shr(224, calldataload(add(offset, 84))), 0x7fffffff)
+                            offset := add(offset, 88)
 
-                        let update := ve33Swap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
-                        currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
+                            let isToken1 := resolveDirection(currentToken, token0, token1)
+                            let isExactOut := slt(currentAmount, 0)
+
+                            if iszero(sqrtRatioLimit) {
+                                sqrtRatioLimit := minSqrtRatio
+                                if xor(isExactOut, isToken1) {
+                                    sqrtRatioLimit := maxSqrtRatio
+                                }
+                            }
+
+                            let update := coreSwap(coreAddress, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
+                            currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
+                        }
+                        case 1 {
+                            if gt(add(offset, 108), routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+                            let forwardee := shr(96, calldataload(offset))
+                            let token0 := shr(96, calldataload(add(offset, 20)))
+                            let token1 := shr(96, calldataload(add(offset, 40)))
+                            let config := calldataload(add(offset, 60))
+                            let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
+                            let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
+                            offset := add(offset, 108)
+
+                            let isToken1 := resolveDirection(currentToken, token0, token1)
+                            let isExactOut := slt(currentAmount, 0)
+
+                            if iszero(sqrtRatioLimit) {
+                                sqrtRatioLimit := minSqrtRatio
+                                if xor(isExactOut, isToken1) {
+                                    sqrtRatioLimit := maxSqrtRatio
+                                }
+                            }
+
+                            let update := forwardedSwap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
+                            currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
+                        }
+                        case 2 {
+                            if gt(add(offset, 40), routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+                            let underlying := shr(96, calldataload(offset))
+                            let wrapped := shr(96, calldataload(add(offset, 20)))
+                            offset := add(offset, 40)
+
+                            let forwardAmount := currentAmount
+                            let tokenBeforeWrapper := currentToken
+                            if eq(tokenBeforeWrapper, underlying) {
+                                currentToken := wrapped
+                            }
+
+                            if eq(tokenBeforeWrapper, wrapped) {
+                                forwardAmount := sub(0, currentAmount)
+                                currentToken := underlying
+                            }
+
+                            if and(iszero(eq(tokenBeforeWrapper, underlying)), iszero(eq(tokenBeforeWrapper, wrapped))) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+
+                            forwardWrapper(coreAddress, wrapped, forwardAmount)
+                        }
+                        case 3 {
+                            if gt(add(offset, 108), routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+                            let forwardee := shr(96, calldataload(offset))
+                            let token0 := shr(96, calldataload(add(offset, 20)))
+                            let token1 := shr(96, calldataload(add(offset, 40)))
+                            let config := calldataload(add(offset, 60))
+                            let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
+                            let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
+                            offset := add(offset, 108)
+
+                            let isToken1 := resolveDirection(currentToken, token0, token1)
+                            let isExactOut := slt(currentAmount, 0)
+
+                            if iszero(sqrtRatioLimit) {
+                                sqrtRatioLimit := minSqrtRatio
+                                if xor(isExactOut, isToken1) {
+                                    sqrtRatioLimit := maxSqrtRatio
+                                }
+                            }
+
+                            let update := ve33Swap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
+                            currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
+                        }
+                        default {
+                            revertSelector(0xee7d6c3a) // InvalidHopType()
+                        }
                     }
-                    default {
-                        revertSelector(0xee7d6c3a) // InvalidHopType()
+
+                    if iszero(eq(currentToken, calculatedToken)) {
+                        revertSelector(0x84e505d2) // InvalidRoute()
                     }
+
+                    totalCalculated := add(totalCalculated, currentAmount)
                 }
 
-                if iszero(eq(currentToken, calculatedToken)) {
+                if iszero(eq(offset, routeEnd)) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                if slt(currentAmount, threshold) {
+                if and(and(threshold, exactOutKnown), xor(slt(threshold, 0), exactOut)) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+
+                if slt(totalCalculated, threshold) {
                     mstore(0, shl(224, 0xe65f682d)) // SlippageCheckFailed(int256)
-                    mstore(4, currentAmount)
+                    mstore(4, totalCalculated)
                     revert(0, 0x24)
                 }
 
-                nativeRemaining := settle(coreAddress, specifiedToken, specifiedAmount, payer, recipient, nativeRemaining)
-                nativeRemaining := settle(coreAddress, calculatedToken, sub(0, currentAmount), payer, recipient, nativeRemaining)
+                nativeRemaining := settle(coreAddress, specifiedToken, totalSpecified, payer, recipient, nativeRemaining)
+                nativeRemaining := settle(coreAddress, calculatedToken, sub(0, totalCalculated), payer, recipient, nativeRemaining)
 
                 if nativeRemaining {
                     if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) {
@@ -208,7 +263,7 @@ object "YulRouter" {
                     }
                 }
 
-                mstore(0, currentAmount)
+                mstore(0, totalCalculated)
                 return(0, 0x20)
             }
 

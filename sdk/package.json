@@ -2,11 +2,12 @@
   "name": "@ekubo/yul-router-sdk",
   "version": "0.1.0",
   "type": "module",
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "generate-foundry-testdata": "npm run --silent build && node scripts/generate-foundry-testdata.mjs",
     "test": "vitest run"
   },
   "dependencies": {
@@ -17,4 +18,3 @@
     "vitest": "^3.2.4"
   }
 }
-

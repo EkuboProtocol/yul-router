@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { encodeRoute, ROUTER_SELECTOR } from "../src/index.js";
+import {
+  encodeRoute,
+  encodeRoutes,
+  generateCalldata,
+  MAX_HOP_LENGTH,
+  MAX_MULTIHOP_LENGTH,
+} from "../src/index.js";
 
 const token0 = "0x0000000000000000000000000000000000000000";
 const token1 = "0x1111111111111111111111111111111111111111";
@@ -8,7 +14,7 @@ const extension = "0x3333333333333333333333333333333333333333";
 const config = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 describe("encodeRoute", () => {
-  it("encodes a core multihop route with explicit tokens", () => {
+  it("encodes a selectorless core multihop route with explicit tokens", () => {
     const data = encodeRoute({
       specifiedToken: token0,
       calculatedToken: token2,
@@ -20,7 +26,7 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data.startsWith(ROUTER_SELECTOR)).toBe(true);
+    expect(data.slice(0, 6)).toBe("0x0000");
   });
 
   it("encodes forwarded and wrapper hop types", () => {
@@ -35,7 +41,9 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data.slice(0, 10)).toBe(ROUTER_SELECTOR);
+    expect(data.slice(0, 4)).toBe("0x01");
+    expect(data).toContain("02");
+    expect(data).toContain("01");
   });
 
   it("encodes ve33 hops with an explicit forwardee", () => {
@@ -52,7 +60,7 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data.includes("03")).toBe(true);
+    expect(data).toContain(`03${extension.slice(2).toLowerCase()}`);
   });
 
   it("rejects disconnected hops", () => {
@@ -64,5 +72,115 @@ describe("encodeRoute", () => {
         hops: [{ type: "core", poolKey: { token0: token1, token1: token2, config } }],
       }),
     ).toThrow("disconnected");
+  });
+});
+
+describe("encodeRoutes", () => {
+  it("supports multiple independent multi-hop paths with a shared settlement token pair", () => {
+    const data = encodeRoutes({
+      specifiedToken: token0,
+      calculatedToken: token2,
+      recipient: extension,
+      multiHops: [
+        {
+          specifiedAmount: 1n,
+          hops: [{ type: "core", poolKey: { token0, token1: token2, config } }],
+        },
+        {
+          specifiedAmount: 2n,
+          hops: [
+            { type: "core", poolKey: { token0, token1, config } },
+            { type: "core", poolKey: { token0: token1, token1: token2, config } },
+          ],
+        },
+      ],
+    });
+
+    expect(data.slice(0, 6)).toBe("0x0101");
+    expect(
+      generateCalldata({
+        specifiedToken: token0,
+        calculatedToken: token2,
+        multiHops: [
+          {
+            specifiedAmount: 1n,
+            hops: [{ type: "core", poolKey: { token0, token1: token2, config } }],
+          },
+        ],
+      }),
+    ).toBeDefined();
+  });
+
+  it("rejects mixed exact-in and exact-out paths", () => {
+    expect(() =>
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        multiHops: [
+          { specifiedAmount: 1n, hops: [{ type: "core", poolKey: { token0, token1, config } }] },
+          { specifiedAmount: -1n, hops: [{ type: "core", poolKey: { token0, token1, config } }] },
+        ],
+      }),
+    ).toThrow("mixed exact-out / exact-in");
+  });
+
+  it("supports the maximum number of multi-hops", () => {
+    const hop = { type: "core" as const, poolKey: { token0, token1, config } };
+
+    expect(
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        multiHops: Array.from({ length: MAX_MULTIHOP_LENGTH }, () => ({
+          specifiedAmount: 1n,
+          hops: [hop],
+        })),
+      }),
+    ).toBeDefined();
+  });
+
+  it("supports the maximum number of hops per multi-hop", () => {
+    const hop = { type: "core" as const, poolKey: { token0, token1, config } };
+
+    expect(
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token0,
+        multiHops: [
+          {
+            specifiedAmount: 1n,
+            hops: Array.from({ length: MAX_HOP_LENGTH }, () => hop),
+          },
+        ],
+      }),
+    ).toBeDefined();
+  });
+
+  it("rejects routes above the encoded complexity limits", () => {
+    const hop = { type: "core" as const, poolKey: { token0, token1, config } };
+
+    expect(() =>
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        multiHops: Array.from({ length: MAX_MULTIHOP_LENGTH + 1 }, () => ({
+          specifiedAmount: 1n,
+          hops: [hop],
+        })),
+      }),
+    ).toThrow("multiHops length");
+
+    expect(() =>
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        multiHops: [
+          {
+            specifiedAmount: 1n,
+            hops: Array.from({ length: MAX_HOP_LENGTH + 1 }, () => hop),
+          },
+        ],
+      }),
+    ).toThrow("hops");
   });
 });
