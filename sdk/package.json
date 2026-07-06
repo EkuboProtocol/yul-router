@@ -18,16 +18,15 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "generate-foundry-testdata": "npm run --silent build && node scripts/generate-foundry-testdata.mjs",
-    "prepublishOnly": "npm run build && npm test",
-    "test": "vitest run"
+    "generate-foundry-testdata": "bun run build && bun scripts/generate-foundry-testdata.mjs",
+    "prepublishOnly": "bun run build && bun run test",
+    "test": "bun test test/index.test.ts"
   },
   "peerDependencies": {
     "viem": "^2.31.7"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "viem": "^2.31.7",
-    "vitest": "^3.2.4"
+    "viem": "^2.31.7"
   }
 }
