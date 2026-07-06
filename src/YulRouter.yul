@@ -38,14 +38,13 @@ object "YulRouter" {
 
             function lock(coreAddress) {
                 let size := calldatasize()
-                let ptr := 0
 
-                mstore(ptr, shl(224, 0xf83d08ba)) // lock()
-                calldatacopy(add(ptr, 4), 0, size)
+                mstore(0, shl(224, 0xf83d08ba)) // lock()
+                calldatacopy(4, 0, size)
                 mstore(add(size, 4), caller())
                 mstore(add(size, 0x24), callvalue())
 
-                if iszero(call(gas(), coreAddress, 0, ptr, add(size, 0x44), 0, 0x20)) {
+                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0x20)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
