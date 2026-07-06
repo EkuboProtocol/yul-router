@@ -343,21 +343,22 @@ object "YulRouter" {
             }
 
             function nextFromUpdate(update, amount, isToken1, token0, token1) -> nextAmount, nextToken {
-                let delta0 := signextend(15, shr(128, update))
-                let delta1 := signextend(15, update)
-
                 switch isToken1
                 case 0 {
+                    let delta0 := signextend(15, shr(128, update))
                     if iszero(eq(delta0, amount)) {
                         revertSelector(0xe3648855) // PartialSwapsDisallowed()
                     }
+                    let delta1 := signextend(15, update)
                     nextAmount := sub(0, delta1)
                     nextToken := token1
                 }
                 default {
+                    let delta1 := signextend(15, update)
                     if iszero(eq(delta1, amount)) {
                         revertSelector(0xe3648855) // PartialSwapsDisallowed()
                     }
+                    let delta0 := signextend(15, shr(128, update))
                     nextAmount := sub(0, delta0)
                     nextToken := token0
                 }
