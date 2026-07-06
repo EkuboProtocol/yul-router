@@ -33,3 +33,13 @@ Not supported by design:
 Constructor argument:
 
 - `core: address`
+
+## Deployment
+
+The Foundry deploy script uses the canonical Ekubo Core address
+`0x00000000000014aA86C5d3c41765bb24e11bd701`.
+
+```sh
+forge build
+forge script script/DeployYulRouter.s.sol --rpc-url $RPC_URL --broadcast --verify
+```

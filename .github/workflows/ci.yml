@@ -42,6 +42,14 @@ jobs:
         run: npm test
         working-directory: yul-router/sdk
 
+      - name: Build contracts and scripts
+        run: forge build
+        working-directory: yul-router
+
+      - name: Simulate deploy script
+        run: forge script script/DeployYulRouter.s.sol --sig "run()" --offline
+        working-directory: yul-router
+
       - name: Test contracts
-        run: forge test --offline
+        run: forge test
         working-directory: yul-router
