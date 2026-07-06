@@ -57,12 +57,11 @@ object "YulRouter" {
             }
 
             function locked(coreAddress) {
-                let mask160Inner := 0xffffffffffffffffffffffffffffffffffffffff
                 let minSqrtRatio := 0x00000000400065a8177fae27
                 let maxSqrtRatio := 0xffff9a5889f795069a41a8a3
 
                 let routeEnd := sub(calldatasize(), 0x40)
-                let payer := and(calldataload(routeEnd), mask160Inner)
+                let payer := calldataload(routeEnd)
                 let nativeRemaining := calldataload(add(routeEnd, 0x20))
 
                 let offset := 0x24
