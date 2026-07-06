@@ -1,10 +1,10 @@
 {
-  "hand_core_hop": "90049",
-  "hand_multi_multihop": "140982",
-  "hand_ve33_hop": "88020",
-  "hand_wrapper_hop": "80993",
-  "sdk_core_hop": "90049",
-  "sdk_multi_multihop": "131382",
-  "sdk_ve33_hop": "88020",
-  "sdk_wrapper_hop": "73693"
+  "hand_core_hop": "90025",
+  "hand_multi_multihop": "140958",
+  "hand_ve33_hop": "87996",
+  "hand_wrapper_hop": "80969",
+  "sdk_core_hop": "90025",
+  "sdk_multi_multihop": "131358",
+  "sdk_ve33_hop": "87996",
+  "sdk_wrapper_hop": "73669"
 }

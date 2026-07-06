@@ -66,7 +66,7 @@ object "YulRouter" {
 
                 let offset := 0x24
 
-                if gt(add(offset, 58), routeEnd) {
+                if gt(0x5e, routeEnd) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
@@ -77,15 +77,15 @@ object "YulRouter" {
                 let specifiedToken := shr(96, calldataload(add(offset, 2)))
                 let calculatedToken := shr(96, calldataload(add(offset, 22)))
                 let threshold := signextend(15, shr(128, calldataload(add(offset, 42))))
-                offset := add(offset, 58)
+                offset := 0x5e
 
                 let recipient := payer
                 if and(flags, 1) {
-                    if gt(add(offset, 20), routeEnd) {
+                    if gt(0x72, routeEnd) {
                         revertSelector(0x84e505d2) // InvalidRoute()
                     }
                     recipient := shr(96, calldataload(offset))
-                    offset := add(offset, 20)
+                    offset := 0x72
                 }
 
                 let totalSpecified := 0
