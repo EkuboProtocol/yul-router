@@ -407,7 +407,7 @@ object "YulRouter" {
                 mstore(4, token)
                 pop(call(gas(), coreAddress, 0, 0, 36, 0, 0))
 
-                let ptr := 0x20
+                let ptr := 0
                 mstore(ptr, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
                 mstore(add(ptr, 4), payer)
                 mstore(add(ptr, 36), coreAddress)
