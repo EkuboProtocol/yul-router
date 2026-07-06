@@ -348,6 +348,102 @@ contract YulRouterTest is Test {
         _assertRouterReverts(data, IFlashAccountant.DebtsNotZeroed.selector);
     }
 
+    function testFuzz_ExactInCannotSpendMoreThanSpecifiedAmount(
+        address recipient,
+        uint128 rawAmountIn,
+        uint128 rawApprovalHeadroom
+    ) external {
+        address payer = makeAddr("fuzz payer");
+        uint128 amountIn = uint128(bound(rawAmountIn, 1, POSITION_AMOUNT / 1000));
+        uint128 approvalHeadroom = uint128(bound(rawApprovalHeadroom, 0, POSITION_AMOUNT / 1000));
+        uint256 allowance = uint256(amountIn) + approvalHeadroom;
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            recipient, bytes1(uint8(0)), address(0), _poolKey(), TOKEN0, TOKEN1, int128(0), int128(amountIn)
+        );
+
+        deal(TOKEN0, payer, allowance);
+        vm.prank(payer);
+        IERC20(TOKEN0).approve(router, allowance);
+
+        uint256 balanceBefore = IERC20(TOKEN0).balanceOf(payer);
+        uint256 allowanceBefore = IERC20(TOKEN0).allowance(payer, router);
+
+        vm.prank(payer);
+        (bool success,) = router.call(data);
+
+        assertTrue(success, "router call");
+        assertEq(balanceBefore - IERC20(TOKEN0).balanceOf(payer), amountIn, "payer spent");
+        assertEq(allowanceBefore - IERC20(TOKEN0).allowance(payer, router), amountIn, "allowance spent");
+    }
+
+    function testFuzz_RecipientApprovalIsNeverUsedAsPayer(address recipient, uint128 rawAmountIn) external {
+        address payer = makeAddr("fuzz payer");
+        vm.assume(recipient != payer);
+        vm.assume(recipient != CORE_ADDRESS);
+
+        uint128 amountIn = uint128(bound(rawAmountIn, 1, POSITION_AMOUNT / 1000));
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            recipient, bytes1(uint8(0)), address(0), _poolKey(), TOKEN0, TOKEN1, int128(0), int128(amountIn)
+        );
+
+        deal(TOKEN0, payer, amountIn);
+        deal(TOKEN0, recipient, amountIn * 2);
+
+        vm.prank(payer);
+        IERC20(TOKEN0).approve(router, amountIn);
+
+        vm.prank(recipient);
+        IERC20(TOKEN0).approve(router, amountIn * 2);
+
+        uint256 recipientBalanceBefore = IERC20(TOKEN0).balanceOf(recipient);
+        uint256 recipientAllowanceBefore = IERC20(TOKEN0).allowance(recipient, router);
+        uint256 payerBalanceBefore = IERC20(TOKEN0).balanceOf(payer);
+
+        vm.prank(payer);
+        (bool success,) = router.call(data);
+
+        assertTrue(success, "router call");
+        assertEq(payerBalanceBefore - IERC20(TOKEN0).balanceOf(payer), amountIn, "payer spent");
+        assertEq(IERC20(TOKEN0).balanceOf(recipient), recipientBalanceBefore, "recipient balance");
+        assertEq(IERC20(TOKEN0).allowance(recipient, router), recipientAllowanceBefore, "recipient allowance");
+    }
+
+    function testFuzz_ExactOutCannotSpendMoreThanInputThreshold(
+        address recipient,
+        uint128 rawAmountOut,
+        uint128 rawMaxInput
+    ) external {
+        address payer = makeAddr("fuzz payer");
+        uint128 amountOut = uint128(bound(rawAmountOut, 1, POSITION_AMOUNT / 1000));
+        uint128 maxInput = uint128(bound(rawMaxInput, 1, POSITION_AMOUNT / 1000));
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            recipient, bytes1(uint8(0)), address(0), _poolKey(), TOKEN0, TOKEN1, -int128(maxInput), -int128(amountOut)
+        );
+
+        deal(TOKEN1, payer, maxInput);
+        vm.prank(payer);
+        IERC20(TOKEN1).approve(router, maxInput);
+
+        uint256 balanceBefore = IERC20(TOKEN1).balanceOf(payer);
+        uint256 allowanceBefore = IERC20(TOKEN1).allowance(payer, router);
+
+        vm.prank(payer);
+        (bool success, bytes memory returndata) = router.call(data);
+
+        if (success) {
+            int256 calculatedAmount = abi.decode(returndata, (int256));
+            uint256 spent = balanceBefore - IERC20(TOKEN1).balanceOf(payer);
+
+            assertLt(calculatedAmount, int256(0), "calculated amount");
+            assertEq(spent, uint256(-calculatedAmount), "payer spent");
+            assertLe(spent, maxInput, "max input");
+            assertEq(allowanceBefore - IERC20(TOKEN1).allowance(payer, router), spent, "allowance spent");
+        } else {
+            assertEq(IERC20(TOKEN1).balanceOf(payer), balanceBefore, "payer balance");
+            assertEq(IERC20(TOKEN1).allowance(payer, router), allowanceBefore, "payer allowance");
+        }
+    }
+
     function test_CodeSize() external view {
         assertTrue(router.code.length < 10_000, "code size");
     }
