@@ -7,6 +7,7 @@ import {TokenWrapper} from "ekubo/TokenWrapper.sol";
 import {Ve33} from "ekubo/extensions/Ve33.sol";
 import {ICore} from "ekubo/interfaces/ICore.sol";
 import {IFlashAccountant} from "ekubo/interfaces/IFlashAccountant.sol";
+import {Locker} from "ekubo/types/locker.sol";
 import {PoolConfig} from "ekubo/types/poolConfig.sol";
 import {PoolKey} from "ekubo/types/poolKey.sol";
 import {Test} from "forge-std/Test.sol";
@@ -35,10 +36,52 @@ contract DelegateCaller {
     }
 }
 
+contract DebtForwardee {
+    ICore private immutable CORE;
+    address private immutable debtToken;
+    uint128 private immutable amountIn;
+    uint128 private immutable amountOut;
+
+    constructor(ICore core, address debtToken_, uint128 amountIn_, uint128 amountOut_) {
+        CORE = core;
+        debtToken = debtToken_;
+        amountIn = amountIn_;
+        amountOut = amountOut_;
+    }
+
+    function forwarded_2374103877(Locker) external returns (bytes32 update) {
+        (bool success, bytes memory returndata) = address(CORE)
+            .call(
+                abi.encodePacked(
+                    IFlashAccountant.withdraw.selector, bytes20(debtToken), bytes20(address(this)), bytes16(uint128(1))
+                )
+            );
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returndata, 0x20), mload(returndata))
+            }
+        }
+
+        return _poolBalanceUpdate(int128(amountIn), -int128(amountOut));
+    }
+
+    function _poolBalanceUpdate(int128 delta0, int128 delta1) private pure returns (bytes32) {
+        return bytes32((uint256(_encodeInt128(delta0)) << 128) | _encodeInt128(delta1));
+    }
+
+    function _encodeInt128(int128 value) private pure returns (uint128 encoded) {
+        assembly ("memory-safe") {
+            encoded := value
+        }
+    }
+}
+
 contract YulRouterTest is Test {
     error DelegateCall();
     error ForwardNotAllowed();
     error InvalidCaller();
+    error InvalidRoute();
+    error SlippageCheckFailed(int256);
 
     address payable private constant CORE_ADDRESS = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
     address private constant TOKEN0 = 0x1111111111111111111111111111111111111111;
@@ -228,6 +271,83 @@ contract YulRouterTest is Test {
         router.call(data);
     }
 
+    function testRevert_AdversarialCalldataCannotUseFakePayer() external {
+        address victim = makeAddr("victim");
+        address attacker = makeAddr("attacker");
+        bytes memory data =
+            bytes.concat(_encodeOneHopRoute(attacker), bytes32(uint256(uint160(victim))), bytes32(uint256(0)));
+
+        deal(TOKEN0, victim, SWAP_AMOUNT);
+        vm.prank(victim);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        uint256 victimBalanceBefore = IERC20(TOKEN0).balanceOf(victim);
+        uint256 victimAllowanceBefore = IERC20(TOKEN0).allowance(victim, router);
+
+        vm.prank(attacker);
+        _assertRouterReverts(data, InvalidRoute.selector);
+
+        assertEq(IERC20(TOKEN0).balanceOf(victim), victimBalanceBefore, "victim balance");
+        assertEq(IERC20(TOKEN0).allowance(victim, router), victimAllowanceBefore, "victim allowance");
+    }
+
+    function testRevert_ExactInSlippageDoesNotSpendAllowance() external {
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this),
+            bytes1(uint8(0)),
+            address(0),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            int128(POSITION_AMOUNT),
+            int128(SWAP_AMOUNT)
+        );
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        uint256 allowanceBefore = IERC20(TOKEN0).allowance(address(this), router);
+
+        _assertRouterReverts(data, SlippageCheckFailed.selector);
+
+        assertEq(IERC20(TOKEN0).allowance(address(this), router), allowanceBefore, "caller allowance");
+    }
+
+    function testRevert_ExactOutSlippageDoesNotSpendAllowance() external {
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this), bytes1(uint8(0)), address(0), _poolKey(), TOKEN0, TOKEN1, -int128(1), -int128(SWAP_AMOUNT)
+        );
+
+        deal(TOKEN1, address(this), POSITION_AMOUNT);
+        IERC20(TOKEN1).approve(router, POSITION_AMOUNT);
+
+        uint256 allowanceBefore = IERC20(TOKEN1).allowance(address(this), router);
+
+        _assertRouterReverts(data, SlippageCheckFailed.selector);
+
+        assertEq(IERC20(TOKEN1).allowance(address(this), router), allowanceBefore, "caller allowance");
+    }
+
+    function testRevert_ArbitraryForwardeeCannotLeaveThirdTokenDebt() external {
+        DebtForwardee forwardee = new DebtForwardee(CORE, TOKEN2, SWAP_AMOUNT, 1);
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this),
+            bytes1(uint8(1)),
+            address(forwardee),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT)
+        );
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        deal(TOKEN2, CORE_ADDRESS, 1);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        _assertRouterReverts(data, IFlashAccountant.DebtsNotZeroed.selector);
+    }
+
     function test_CodeSize() external view {
         assertTrue(router.code.length < 10_000, "code size");
     }
@@ -278,6 +398,20 @@ contract YulRouterTest is Test {
         assertEq(
             IERC20(tokenOut).balanceOf(address(this)) - tokenOutBefore, uint256(calculatedAmount), "tokenOut received"
         );
+    }
+
+    function _assertRouterReverts(bytes memory data, bytes4 selector) private {
+        (bool success, bytes memory returndata) = router.call(data);
+
+        assertFalse(success, "router call");
+        assertGe(returndata.length, 4, "revert data length");
+        assertEq(_selector(returndata), selector, "revert selector");
+    }
+
+    function _selector(bytes memory returndata) private pure returns (bytes4 selector) {
+        assembly ("memory-safe") {
+            selector := mload(add(returndata, 0x20))
+        }
     }
 
     function _poolKey() private pure returns (PoolKey memory) {
@@ -334,14 +468,29 @@ contract YulRouterTest is Test {
         pure
         returns (bytes memory)
     {
+        return _encodeSwapRouteWithAmounts(
+            recipient, hopType, forwardee, key, TOKEN0, TOKEN1, int128(0), int128(SWAP_AMOUNT)
+        );
+    }
+
+    function _encodeSwapRouteWithAmounts(
+        address recipient,
+        bytes1 hopType,
+        address forwardee,
+        PoolKey memory key,
+        address specifiedToken,
+        address calculatedToken,
+        int128 threshold,
+        int128 specifiedAmount
+    ) private pure returns (bytes memory) {
         return bytes.concat(
             bytes1(uint8(1)), // has recipient
             bytes1(uint8(0)), // one multi-hop
-            bytes20(TOKEN0),
-            bytes20(TOKEN1),
-            bytes16(uint128(0)),
+            bytes20(specifiedToken),
+            bytes20(calculatedToken),
+            bytes16(_encodeInt128(threshold)),
             bytes20(recipient),
-            bytes16(SWAP_AMOUNT),
+            bytes16(_encodeInt128(specifiedAmount)),
             bytes1(uint8(0)), // one hop
             _encodeSwapHop(hopType, forwardee, key)
         );
@@ -361,5 +510,11 @@ contract YulRouterTest is Test {
             bytes12(uint96(0)), // default sqrt ratio limit
             bytes4(uint32(0))
         );
+    }
+
+    function _encodeInt128(int128 value) private pure returns (uint128 encoded) {
+        assembly ("memory-safe") {
+            encoded := value
+        }
     }
 }

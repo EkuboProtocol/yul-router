@@ -113,18 +113,18 @@ The slippage check occurs after swaps/forwards have executed in the Core lock bu
 
 No path was identified where arbitrary calldata lets a caller spend ERC20 allowance from any address other than the original router caller. No path was identified where a missed `calculatedAmountThreshold` can settle successfully.
 
-### Informational: Add Direct Invariant Tests for Arbitrary Calldata
+### Informational: Direct Invariant Tests for Arbitrary Calldata
 
-The current Foundry tests cover successful core, Ve33, wrapper, multi-multihop, SDK-generated routes, delegatecall rejection, Core forward rejection, and the absence of the old fee-claiming surface. They do not directly assert the two audit invariants under adversarial calldata.
+Status: addressed.
 
-Recommended tests:
+The Foundry suite now directly asserts the two audit invariants under adversarial calldata in `test/YulRouter.t.sol`:
 
-- A malicious caller supplies bytes that try to append or embed a victim address as a fake payer while the victim has approved the router. Assert the victim balance and allowance are unchanged and the transaction cannot spend from the victim.
-- A route with a deliberately impossible exact-in output threshold reverts with `SlippageCheckFailed(int256)` and does not spend caller allowance.
-- A route with a deliberately impossible exact-out input threshold reverts and does not spend caller allowance.
-- A route using an arbitrary forwardee that attempts to create extra debt in a third token reverts due to nonzero Core debt.
+- `testRevert_AdversarialCalldataCannotUseFakePayer` appends a victim address as a fake payer while the victim has approved the router, then asserts the route reverts and the victim balance and allowance remain unchanged.
+- `testRevert_ExactInSlippageDoesNotSpendAllowance` uses an impossible exact-in output threshold and asserts `SlippageCheckFailed(int256)` with caller allowance unchanged.
+- `testRevert_ExactOutSlippageDoesNotSpendAllowance` uses an impossible exact-out input threshold and asserts `SlippageCheckFailed(int256)` with caller allowance unchanged.
+- `testRevert_ArbitraryForwardeeCannotLeaveThirdTokenDebt` uses a malicious forwardee that withdraws a third token during `Core.forward`, leaving nonzero Core debt and causing `DebtsNotZeroed(uint256)`.
 
-These tests would strengthen regression coverage for the manually reviewed invariants, but their absence is not itself an invariant failure in the reviewed implementation.
+No router implementation change was required; this finding was a regression-coverage improvement.
 
 ## Verification Performed
 
@@ -136,14 +136,16 @@ Manual review was performed over:
 - `lib/evm-contracts/src/base/FlashAccountant.sol`
 - relevant portions of `lib/evm-contracts/src/Core.sol`
 
-Commands run after adding this report:
+Commands run after addressing this report:
 
 ```sh
+forge fmt test/YulRouter.t.sol
+forge test --match-path test/YulRouter.t.sol
 forge test
-cd sdk && bun run test
 ```
 
 Results:
 
-- `forge test`: passed. Foundry reported 9 passed, 0 failed, 0 skipped. It also emitted the existing Yul parser diagnostic `error: expected identifier, found <string>` for `src/YulRouter.yul:1:8`, but the command exited successfully and ran the suite.
-- `cd sdk && bun run test`: passed. Bun reported 9 passed, 0 failed across `sdk/test/index.test.ts`.
+- `forge fmt test/YulRouter.t.sol`: formatted the updated test file.
+- `forge test --match-path test/YulRouter.t.sol`: passed. Foundry reported 13 passed, 0 failed, 0 skipped. It also emitted existing dependency compiler warnings from `lib/solady`, but the command exited successfully and ran the suite.
+- `forge test`: passed. Foundry reported 13 passed, 0 failed, 0 skipped. It also emitted the existing Yul parser diagnostic `error: expected identifier, found <string>` for `src/YulRouter.yul:1:8`, but the command exited successfully and ran the suite.
