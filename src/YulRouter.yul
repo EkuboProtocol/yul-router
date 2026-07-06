@@ -291,21 +291,19 @@ object "YulRouter" {
             }
 
             function forwardedSwap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := 0x60
+                mstore(0x60, shl(224, 0x101e8952)) // forward(address)
+                mstore(0x64, forwardee)
+                mstore(0x84, token0)
+                mstore(0xa4, token1)
+                mstore(0xc4, config)
+                mstore(0xe4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                mstore(ptr, shl(224, 0x101e8952)) // forward(address)
-                mstore(add(ptr, 4), forwardee)
-                mstore(add(ptr, 36), token0)
-                mstore(add(ptr, 68), token1)
-                mstore(add(ptr, 100), config)
-                mstore(add(ptr, 132), packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
-
-                if iszero(call(gas(), coreAddress, 0, ptr, 164, ptr, 64)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                if iszero(call(gas(), coreAddress, 0, 0x60, 164, 0x60, 64)) {
+                    returndatacopy(0x60, 0, returndatasize())
+                    revert(0x60, returndatasize())
                 }
 
-                update := mload(ptr)
+                update := mload(0x60)
             }
 
             function ve33Swap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
