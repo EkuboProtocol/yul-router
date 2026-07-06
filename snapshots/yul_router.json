@@ -3,9 +3,9 @@
   "hand_forwarded_hop": "93664",
   "hand_multi_multihop": "140680",
   "hand_ve33_hop": "87791",
-  "hand_wrapper_hop": "80757",
+  "hand_wrapper_hop": "80737",
   "sdk_core_hop": "89810",
   "sdk_multi_multihop": "131080",
   "sdk_ve33_hop": "87791",
-  "sdk_wrapper_hop": "73457"
+  "sdk_wrapper_hop": "73437"
 }

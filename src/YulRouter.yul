@@ -332,15 +332,13 @@ object "YulRouter" {
             }
 
             function forwardWrapper(coreAddress, wrapper, amount) {
-                let ptr := 0
+                mstore(0, shl(224, 0x101e8952)) // forward(address)
+                mstore(4, wrapper)
+                mstore(36, amount)
 
-                mstore(ptr, shl(224, 0x101e8952)) // forward(address)
-                mstore(add(ptr, 4), wrapper)
-                mstore(add(ptr, 36), amount)
-
-                if iszero(call(gas(), coreAddress, 0, ptr, 68, 0, 0)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                if iszero(call(gas(), coreAddress, 0, 0, 68, 0, 0)) {
+                    returndatacopy(0, 0, returndatasize())
+                    revert(0, returndatasize())
                 }
             }
 
