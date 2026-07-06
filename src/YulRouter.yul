@@ -106,10 +106,8 @@ object "YulRouter" {
 
                     if currentAmount {
                         let routeExactOut := slt(currentAmount, 0)
-                        if exactOutKnown {
-                            if xor(exactOut, routeExactOut) {
-                                revertSelector(0x84e505d2) // InvalidRoute()
-                            }
+                        if and(exactOutKnown, xor(exactOut, routeExactOut)) {
+                            revertSelector(0x84e505d2) // InvalidRoute()
                         }
                         exactOutKnown := 1
                         exactOut := routeExactOut
