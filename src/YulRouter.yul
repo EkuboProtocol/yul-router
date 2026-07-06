@@ -424,16 +424,14 @@ object "YulRouter" {
             }
 
             function withdraw(coreAddress, token, recipient, amount) {
-                let ptr := 0
+                mstore(0, shl(224, 0x3ccfd60b)) // withdraw()
+                mstore(4, shl(96, token))
+                mstore(24, shl(96, recipient))
+                mstore(44, shl(128, amount))
 
-                mstore(ptr, shl(224, 0x3ccfd60b)) // withdraw()
-                mstore(add(ptr, 4), shl(96, token))
-                mstore(add(ptr, 24), shl(96, recipient))
-                mstore(add(ptr, 44), shl(128, amount))
-
-                if iszero(call(gas(), coreAddress, 0, ptr, 60, 0, 0)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                if iszero(call(gas(), coreAddress, 0, 0, 60, 0, 0)) {
+                    returndatacopy(0, 0, returndatasize())
+                    revert(0, returndatasize())
                 }
             }
 
