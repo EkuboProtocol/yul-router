@@ -46,8 +46,8 @@ object "YulRouter" {
                 mstore(add(size, 0x24), callvalue())
 
                 if iszero(call(gas(), coreAddress, 0, ptr, add(size, 0x44), 0, 0x20)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                    returndatacopy(0, 0, returndatasize())
+                    revert(0, returndatasize())
                 }
 
                 return(0, 0x20)
