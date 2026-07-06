@@ -269,13 +269,9 @@ object "YulRouter" {
             }
 
             function packParams(amount, isToken1, sqrtRatioLimit, skipAhead) -> params {
-                params := or(
-                    shl(160, sqrtRatioLimit),
-                    or(
-                        shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)),
-                        or(shl(31, isToken1), skipAhead)
-                    )
-                )
+                params := shl(160, sqrtRatioLimit)
+                params := or(params, shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)))
+                params := or(params, or(shl(31, isToken1), skipAhead))
             }
 
             function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
