@@ -121,10 +121,6 @@ object "YulRouter" {
                     offset := add(offset, 1)
 
                     for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
-                        if iszero(lt(offset, routeEnd)) {
-                            revertSelector(0x84e505d2) // InvalidRoute()
-                        }
-
                         let hopType := byte(0, calldataload(offset))
                         offset := add(offset, 1)
 
