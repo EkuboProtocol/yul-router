@@ -13,9 +13,9 @@ object "YulRouter" {
 
     object "Runtime" {
         code {
-            codecopy(0x80, sub(codesize(), 0x40), 0x40)
-            let core := mload(0x80)
-            let self := mload(0xa0)
+            codecopy(0, sub(codesize(), 0x40), 0x40)
+            let core := mload(0)
+            let self := mload(0x20)
 
             if iszero(eq(address(), self)) {
                 revertSelector(0xa1c0d6e5) // DelegateCall()
