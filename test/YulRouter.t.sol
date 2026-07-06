@@ -36,6 +36,26 @@ contract DelegateCaller {
     }
 }
 
+contract SwapForwardee {
+    ICore private immutable CORE;
+
+    constructor(ICore core) {
+        CORE = core;
+    }
+
+    function forwarded_2374103877(Locker) external returns (bytes32 update) {
+        (bool success, bytes memory returndata) =
+            address(CORE).call(bytes.concat(ICore.swap_6269342730.selector, msg.data[36:]));
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returndata, 0x20), mload(returndata))
+            }
+        }
+
+        return abi.decode(returndata, (bytes32));
+    }
+}
+
 contract DebtForwardee {
     ICore private immutable CORE;
     address private immutable debtToken;
@@ -156,6 +176,26 @@ contract YulRouterTest is Test {
 
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_ve33_hop");
+        assertTrue(success, "router call");
+
+        int256 calculatedAmount = abi.decode(returndata, (int256));
+        assertGt(calculatedAmount, int256(0), "calculated amount");
+        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
+        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+    }
+
+    function test_SwapExactInForwardedHop() external {
+        SwapForwardee forwardee = new SwapForwardee(CORE);
+        bytes memory data = _encodeSwapRoute(address(this), bytes1(uint8(1)), address(forwardee), _poolKey());
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        (bool success, bytes memory returndata) = router.call(data);
+        vm.snapshotGasLastCall("yul_router", "hand_forwarded_hop");
         assertTrue(success, "router call");
 
         int256 calculatedAmount = abi.decode(returndata, (int256));
