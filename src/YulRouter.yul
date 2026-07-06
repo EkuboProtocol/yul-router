@@ -276,20 +276,18 @@ object "YulRouter" {
             }
 
             function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := 0x60
+                mstore(0x60, 0) // swap_6269342730()
+                mstore(0x64, token0)
+                mstore(0x84, token1)
+                mstore(0xa4, config)
+                mstore(0xc4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                mstore(ptr, 0) // swap_6269342730()
-                mstore(add(ptr, 4), token0)
-                mstore(add(ptr, 36), token1)
-                mstore(add(ptr, 68), config)
-                mstore(add(ptr, 100), packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
-
-                if iszero(call(gas(), coreAddress, 0, ptr, 132, ptr, 64)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                if iszero(call(gas(), coreAddress, 0, 0x60, 132, 0x60, 64)) {
+                    returndatacopy(0x60, 0, returndatasize())
+                    revert(0x60, returndatasize())
                 }
 
-                update := mload(ptr)
+                update := mload(0x60)
             }
 
             function forwardedSwap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
