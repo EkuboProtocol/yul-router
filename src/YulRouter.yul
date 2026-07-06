@@ -172,12 +172,12 @@ object "YulRouter" {
                             currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
                         }
                         case 2 {
-                            if gt(add(offset, 40), routeEnd) {
-                                revertSelector(0x84e505d2) // InvalidRoute()
-                            }
                             let underlying := shr(96, calldataload(offset))
                             let wrapped := shr(96, calldataload(add(offset, 20)))
                             offset := add(offset, 40)
+                            if gt(offset, routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
 
                             let forwardAmount := currentAmount
                             let tokenBeforeWrapper := currentToken
