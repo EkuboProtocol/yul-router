@@ -60,7 +60,7 @@ object "YulRouter" {
                 let payer := calldataload(routeEnd)
                 let nativeRemaining := calldataload(add(routeEnd, 0x20))
 
-                let offset := 0x24
+                let offset := 0x5e
 
                 let flagsWord := calldataload(0x24)
                 let hasRecipient := and(byte(0, flagsWord), 1)
@@ -69,7 +69,6 @@ object "YulRouter" {
                 let specifiedToken := shr(96, calldataload(0x26))
                 let calculatedToken := shr(96, calldataload(0x3a))
                 let threshold := sar(128, calldataload(0x4e))
-                offset := 0x5e
 
                 let recipient := payer
                 switch hasRecipient
