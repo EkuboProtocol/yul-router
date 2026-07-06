@@ -42,8 +42,9 @@ object "YulRouter" {
 
                 mstore(ptr, shl(224, 0xf83d08ba)) // lock()
                 calldatacopy(add(ptr, 4), 0, size)
-                mstore(add(add(ptr, 4), size), caller())
-                mstore(add(add(ptr, 0x24), size), callvalue())
+                let tail := add(ptr, size)
+                mstore(add(tail, 4), caller())
+                mstore(add(tail, 0x24), callvalue())
 
                 if iszero(call(gas(), coreAddress, 0, ptr, add(size, 0x44), ptr, 0x20)) {
                     returndatacopy(ptr, 0, returndatasize())
