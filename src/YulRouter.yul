@@ -18,7 +18,6 @@ object "YulRouter" {
             codecopy(0x80, sub(codesize(), 0x40), 0x40)
             let core := and(mload(0x80), mask160)
             let self := and(mload(0xa0), mask160)
-            mstore(0x40, 0x80)
 
             if iszero(eq(address(), self)) {
                 revertSelector(0xa1c0d6e5) // DelegateCall()
@@ -41,7 +40,7 @@ object "YulRouter" {
 
             function lock(coreAddress) {
                 let size := calldatasize()
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, shl(224, 0xf83d08ba)) // lock()
                 calldatacopy(add(ptr, 4), 0, size)
@@ -281,7 +280,7 @@ object "YulRouter" {
             }
 
             function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, 0) // swap_6269342730()
                 mstore(add(ptr, 4), token0)
@@ -298,7 +297,7 @@ object "YulRouter" {
             }
 
             function forwardedSwap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, shl(224, 0x101e8952)) // forward(address)
                 mstore(add(ptr, 4), forwardee)
@@ -316,7 +315,7 @@ object "YulRouter" {
             }
 
             function ve33Swap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, shl(224, 0x101e8952)) // forward(address)
                 mstore(add(ptr, 4), forwardee)
@@ -335,7 +334,7 @@ object "YulRouter" {
             }
 
             function forwardWrapper(coreAddress, wrapper, amount) {
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, shl(224, 0x101e8952)) // forward(address)
                 mstore(add(ptr, 4), wrapper)
@@ -408,7 +407,7 @@ object "YulRouter" {
                 mstore(4, token)
                 pop(call(gas(), coreAddress, 0, 0, 36, 0, 0))
 
-                let ptr := mload(0x40)
+                let ptr := 0x80
                 mstore(ptr, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
                 mstore(add(ptr, 4), payer)
                 mstore(add(ptr, 36), coreAddress)
@@ -430,7 +429,7 @@ object "YulRouter" {
             }
 
             function withdraw(coreAddress, token, recipient, amount) {
-                let ptr := mload(0x40)
+                let ptr := 0x80
 
                 mstore(ptr, shl(224, 0x3ccfd60b)) // withdraw()
                 mstore(add(ptr, 4), shl(96, token))
