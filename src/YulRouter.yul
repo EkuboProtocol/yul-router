@@ -256,13 +256,15 @@ object "YulRouter" {
             }
 
             function resolveDirection(currentToken, token0, token1) -> isToken1 {
+                if eq(currentToken, token0) {
+                    isToken1 := eq(token0, token1)
+                    leave
+                }
                 if eq(currentToken, token1) {
                     isToken1 := 1
                     leave
                 }
-                if iszero(eq(currentToken, token0)) {
-                    revertSelector(0x84e505d2) // InvalidRoute()
-                }
+                revertSelector(0x84e505d2) // InvalidRoute()
             }
 
             function packParams(amount, isToken1, sqrtRatioLimit, skipAhead) -> params {
