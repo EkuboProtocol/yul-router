@@ -264,13 +264,8 @@ object "YulRouter" {
             }
 
             function resolveDirection(currentToken, token0, token1) -> isToken1 {
-                if eq(currentToken, token0) {
-                    isToken1 := 0
-                }
-                if eq(currentToken, token1) {
-                    isToken1 := 1
-                }
-                if and(iszero(eq(currentToken, token0)), iszero(eq(currentToken, token1))) {
+                isToken1 := eq(currentToken, token1)
+                if iszero(or(eq(currentToken, token0), isToken1)) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
             }
