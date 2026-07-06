@@ -130,11 +130,10 @@ object "YulRouter" {
                             }
 
                             let isToken1 := resolveDirection(currentToken, token0, token1)
-                            let isExactOut := slt(currentAmount, 0)
 
                             if iszero(sqrtRatioLimit) {
                                 sqrtRatioLimit := minSqrtRatio
-                                if xor(isExactOut, isToken1) {
+                                if xor(slt(currentAmount, 0), isToken1) {
                                     sqrtRatioLimit := maxSqrtRatio
                                 }
                             }
@@ -155,11 +154,10 @@ object "YulRouter" {
                             offset := add(offset, 108)
 
                             let isToken1 := resolveDirection(currentToken, token0, token1)
-                            let isExactOut := slt(currentAmount, 0)
 
                             if iszero(sqrtRatioLimit) {
                                 sqrtRatioLimit := minSqrtRatio
-                                if xor(isExactOut, isToken1) {
+                                if xor(slt(currentAmount, 0), isToken1) {
                                     sqrtRatioLimit := maxSqrtRatio
                                 }
                             }
@@ -205,11 +203,10 @@ object "YulRouter" {
                             offset := add(offset, 108)
 
                             let isToken1 := resolveDirection(currentToken, token0, token1)
-                            let isExactOut := slt(currentAmount, 0)
 
                             if iszero(sqrtRatioLimit) {
                                 sqrtRatioLimit := minSqrtRatio
-                                if xor(isExactOut, isToken1) {
+                                if xor(slt(currentAmount, 0), isToken1) {
                                     sqrtRatioLimit := maxSqrtRatio
                                 }
                             }
