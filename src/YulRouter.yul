@@ -364,8 +364,6 @@ object "YulRouter" {
             }
 
             function settle(coreAddress, token, signedAmount, payer, recipient, nativeRemaining) -> updatedNativeRemaining {
-                updatedNativeRemaining := nativeRemaining
-
                 switch sgt(signedAmount, 0)
                 case 1 {
                     updatedNativeRemaining := pay(coreAddress, token, payer, signedAmount, nativeRemaining)
@@ -374,6 +372,7 @@ object "YulRouter" {
                     if slt(signedAmount, 0) {
                         withdraw(coreAddress, token, recipient, sub(0, signedAmount))
                     }
+                    updatedNativeRemaining := nativeRemaining
                 }
             }
 
