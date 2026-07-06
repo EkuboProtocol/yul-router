@@ -38,7 +38,7 @@ object "YulRouter" {
 
             function lock(coreAddress) {
                 let size := calldatasize()
-                let ptr := 0x80
+                let ptr := 0
 
                 mstore(ptr, shl(224, 0xf83d08ba)) // lock()
                 calldatacopy(add(ptr, 4), 0, size)
