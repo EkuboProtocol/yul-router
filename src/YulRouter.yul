@@ -123,15 +123,15 @@ object "YulRouter" {
 
                         switch hopType
                         case 0 {
-                            if gt(add(offset, 88), routeEnd) {
-                                revertSelector(0x84e505d2) // InvalidRoute()
-                            }
                             let token0 := shr(96, calldataload(offset))
                             let token1 := shr(96, calldataload(add(offset, 20)))
                             let config := calldataload(add(offset, 40))
                             let sqrtRatioLimit := shr(160, calldataload(add(offset, 72)))
                             let skipAhead := and(shr(224, calldataload(add(offset, 84))), 0x7fffffff)
                             offset := add(offset, 88)
+                            if gt(offset, routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
 
                             let isToken1 := resolveDirection(currentToken, token0, token1)
                             let isExactOut := slt(currentAmount, 0)
