@@ -280,7 +280,7 @@ object "YulRouter" {
             }
 
             function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                let ptr := 0x80
+                let ptr := 0x60
 
                 mstore(ptr, 0) // swap_6269342730()
                 mstore(add(ptr, 4), token0)
