@@ -45,13 +45,12 @@ object "YulRouter" {
                 mstore(add(add(ptr, 4), size), caller())
                 mstore(add(add(ptr, 0x24), size), callvalue())
 
-                if iszero(call(gas(), coreAddress, 0, ptr, add(size, 0x44), 0, 0)) {
+                if iszero(call(gas(), coreAddress, 0, ptr, add(size, 0x44), ptr, 0x20)) {
                     returndatacopy(ptr, 0, returndatasize())
                     revert(ptr, returndatasize())
                 }
 
-                returndatacopy(ptr, 0, returndatasize())
-                return(ptr, returndatasize())
+                return(ptr, 0x20)
             }
 
             function locked(coreAddress) {
