@@ -248,13 +248,9 @@ contract YulRouterTest is Test {
     }
 
     function _sdkCases() private returns (SdkCases memory c) {
-        string[] memory command = new string[](6);
-        command[0] = "npm";
-        command[1] = "--prefix";
-        command[2] = "sdk";
-        command[3] = "--silent";
-        command[4] = "run";
-        command[5] = "generate-foundry-testdata";
+        string[] memory command = new string[](2);
+        command[0] = "bun";
+        command[1] = "sdk/scripts/generate-foundry-testdata.mjs";
 
         c = abi.decode(vm.ffi(command), (SdkCases));
     }

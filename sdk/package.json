@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "generate-foundry-testdata": "bun run build && bun scripts/generate-foundry-testdata.mjs",
+    "generate-foundry-testdata": "bun scripts/generate-foundry-testdata.mjs",
     "prepublishOnly": "bun run build && bun run test",
     "test": "bun test test/index.test.ts"
   },

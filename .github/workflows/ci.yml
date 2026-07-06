@@ -23,23 +23,21 @@ jobs:
         with:
           version: stable
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: yul-router/sdk/package-lock.json
+          bun-version: 1.3.11
 
       - name: Install SDK dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
         working-directory: yul-router/sdk
 
       - name: Build SDK
-        run: npm run build
+        run: bun run build
         working-directory: yul-router/sdk
 
       - name: Test SDK
-        run: npm test
+        run: bun run test
         working-directory: yul-router/sdk
 
       - name: Build contracts and scripts

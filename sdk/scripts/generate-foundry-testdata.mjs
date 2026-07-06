@@ -1,5 +1,5 @@
 import { concatHex, encodeAbiParameters, numberToHex } from "viem";
-import { encodeRoute, encodeRoutes } from "../dist/index.js";
+import { encodeRoute, encodeRoutes } from "../src/index.ts";
 
 const TOKEN0 = "0x1111111111111111111111111111111111111111";
 const TOKEN1 = "0x2222222222222222222222222222222222222222";
