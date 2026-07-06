@@ -68,13 +68,13 @@ object "YulRouter" {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                let flagsWord := calldataload(offset)
+                let flagsWord := calldataload(0x24)
                 let flags := byte(0, flagsWord)
                 let multiHopsRemaining := add(byte(1, flagsWord), 1)
 
-                let specifiedToken := shr(96, calldataload(add(offset, 2)))
-                let calculatedToken := shr(96, calldataload(add(offset, 22)))
-                let threshold := signextend(15, shr(128, calldataload(add(offset, 42))))
+                let specifiedToken := shr(96, calldataload(0x26))
+                let calculatedToken := shr(96, calldataload(0x3a))
+                let threshold := signextend(15, shr(128, calldataload(0x4e)))
                 offset := 0x5e
 
                 let recipient := payer
@@ -82,7 +82,7 @@ object "YulRouter" {
                     if gt(0x72, routeEnd) {
                         revertSelector(0x84e505d2) // InvalidRoute()
                     }
-                    recipient := shr(96, calldataload(offset))
+                    recipient := shr(96, calldataload(0x5e))
                     offset := 0x72
                 }
 
