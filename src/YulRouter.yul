@@ -18,7 +18,7 @@ object "YulRouter" {
             codecopy(0x80, sub(codesize(), 0x40), 0x40)
             let core := and(mload(0x80), mask160)
             let self := and(mload(0xa0), mask160)
-            mstore(0x40, 0x200)
+            mstore(0x40, 0x80)
 
             if iszero(eq(address(), self)) {
                 revertSelector(0xa1c0d6e5) // DelegateCall()
