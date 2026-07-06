@@ -1,0 +1,4 @@
+ekubo/=../huff-router/contracts/lib/evm-contracts/src/
+forge-std/=../huff-router/contracts/lib/forge-std/src/
+solady/=../huff-router/contracts/lib/solady/src/
+
