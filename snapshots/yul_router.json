@@ -2,10 +2,10 @@
   "hand_core_hop": "89661",
   "hand_forwarded_hop": "93512",
   "hand_multi_multihop": "140370",
-  "hand_ve33_hop": "87675",
+  "hand_ve33_hop": "87634",
   "hand_wrapper_hop": "80651",
   "sdk_core_hop": "89661",
   "sdk_multi_multihop": "130770",
-  "sdk_ve33_hop": "87675",
+  "sdk_ve33_hop": "87634",
   "sdk_wrapper_hop": "73351"
 }
