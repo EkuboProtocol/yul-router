@@ -94,13 +94,15 @@ object "YulRouter" {
                 let exactOut := 0
 
                 for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
-                    if gt(add(offset, 17), routeEnd) {
-                        revertSelector(0x84e505d2) // InvalidRoute()
-                    }
-
                     let currentToken := specifiedToken
                     let currentAmount := signextend(15, shr(128, calldataload(offset)))
                     offset := add(offset, 16)
+                    let hopsRemaining := add(byte(0, calldataload(offset)), 1)
+                    offset := add(offset, 1)
+
+                    if gt(offset, routeEnd) {
+                        revertSelector(0x84e505d2) // InvalidRoute()
+                    }
 
                     totalSpecified := add(totalSpecified, currentAmount)
 
@@ -114,9 +116,6 @@ object "YulRouter" {
                         exactOutKnown := 1
                         exactOut := routeExactOut
                     }
-
-                    let hopsRemaining := add(byte(0, calldataload(offset)), 1)
-                    offset := add(offset, 1)
 
                     for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
                         let hopType := byte(0, calldataload(offset))
