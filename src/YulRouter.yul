@@ -68,7 +68,7 @@ object "YulRouter" {
 
                 let specifiedToken := shr(96, calldataload(0x26))
                 let calculatedToken := shr(96, calldataload(0x3a))
-                let threshold := signextend(15, shr(128, calldataload(0x4e)))
+                let threshold := sar(128, calldataload(0x4e))
                 offset := 0x5e
 
                 let recipient := payer
@@ -93,7 +93,7 @@ object "YulRouter" {
 
                 for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
                     let currentToken := specifiedToken
-                    let currentAmount := signextend(15, shr(128, calldataload(offset)))
+                    let currentAmount := sar(128, calldataload(offset))
                     offset := add(offset, 16)
                     let hopsRemaining := add(byte(0, calldataload(offset)), 1)
                     offset := add(offset, 1)
@@ -340,13 +340,13 @@ object "YulRouter" {
                     if iszero(eq(delta1, amount)) {
                         revertSelector(0xe3648855) // PartialSwapsDisallowed()
                     }
-                    let delta0 := signextend(15, shr(128, update))
+                    let delta0 := sar(128, update)
                     nextAmount := sub(0, delta0)
                     nextToken := token0
                     leave
                 }
 
-                let delta0 := signextend(15, shr(128, update))
+                let delta0 := sar(128, update)
                 if iszero(eq(delta0, amount)) {
                     revertSelector(0xe3648855) // PartialSwapsDisallowed()
                 }
