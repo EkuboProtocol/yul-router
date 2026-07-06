@@ -405,17 +405,16 @@ object "YulRouter" {
                 mstore(4, token)
                 pop(call(gas(), coreAddress, 0, 0, 36, 0, 0))
 
-                let ptr := 0
-                mstore(ptr, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
-                mstore(add(ptr, 4), payer)
-                mstore(add(ptr, 36), coreAddress)
-                mstore(add(ptr, 68), amount)
+                mstore(0, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
+                mstore(4, payer)
+                mstore(36, coreAddress)
+                mstore(68, amount)
 
-                let success := call(gas(), token, 0, ptr, 100, 0, 32)
+                let success := call(gas(), token, 0, 0, 100, 0, 32)
                 if iszero(and(success, or(iszero(returndatasize()), eq(mload(0), 1)))) {
                     if returndatasize() {
-                        returndatacopy(ptr, 0, returndatasize())
-                        revert(ptr, returndatasize())
+                        returndatacopy(0, 0, returndatasize())
+                        revert(0, returndatasize())
                     }
                     revertSelector(0x7939f424) // TransferFromFailed()
                 }
