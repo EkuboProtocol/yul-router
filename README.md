@@ -37,9 +37,13 @@ Constructor argument:
 ## Deployment
 
 The Foundry deploy script uses the canonical Ekubo Core address
-`0x00000000000014aA86C5d3c41765bb24e11bd701`.
+`0x00000000000014aA86C5d3c41765bb24e11bd701` and deploys through the canonical deterministic deployer
+`0x4e59b44847b379578588920cA78FbF26c0B4956C`.
+
+`SALT` is optional and defaults to `bytes32(0)`. The script prints the deployer, salt, init code hash, and expected
+address before broadcasting so the salt can be mined externally.
 
 ```sh
 forge build
-forge script script/DeployYulRouter.s.sol --rpc-url $RPC_URL --broadcast --verify
+SALT=0x0000000000000000000000000000000000000000000000000000000000000000 forge script script/DeployYulRouter.s.sol --rpc-url $RPC_URL --broadcast
 ```
