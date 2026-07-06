@@ -19,7 +19,7 @@ contract DeployYulRouter is Script {
     address payable public constant CANONICAL_CORE = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
 
     function run() external returns (address router) {
-        bytes32 salt = vm.envOr("SALT", bytes32(0));
+        bytes32 salt = vm.envOr("SALT", bytes32(0x219ff70131cd3966c17874e905d63eab90496169d03582fd7da3ae80e48c4459));
         bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
         bytes memory code = bytes.concat(initcode, abi.encode(CANONICAL_CORE));
         bytes32 initCodeHash = keccak256(code);
