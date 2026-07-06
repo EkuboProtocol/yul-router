@@ -230,9 +230,11 @@ object "YulRouter" {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                if and(threshold, exactOutKnown) {
-                    if xor(slt(threshold, 0), exactOut) {
-                        revertSelector(0x84e505d2) // InvalidRoute()
+                if threshold {
+                    if exactOutKnown {
+                        if xor(slt(threshold, 0), exactOut) {
+                            revertSelector(0x84e505d2) // InvalidRoute()
+                        }
                     }
                 }
 
