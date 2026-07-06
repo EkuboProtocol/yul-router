@@ -378,8 +378,6 @@ object "YulRouter" {
             }
 
             function pay(coreAddress, token, payer, amount, nativeRemaining) -> updatedNativeRemaining {
-                updatedNativeRemaining := nativeRemaining
-
                 switch token
                 case 0 {
                     if gt(amount, nativeRemaining) {
@@ -394,6 +392,7 @@ object "YulRouter" {
                 }
                 default {
                     payErc20(coreAddress, payer, token, amount)
+                    updatedNativeRemaining := nativeRemaining
                 }
             }
 
