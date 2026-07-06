@@ -123,6 +123,9 @@ The Foundry suite now directly asserts the two audit invariants under adversaria
 - `testRevert_ExactInSlippageDoesNotSpendAllowance` uses an impossible exact-in output threshold and asserts `SlippageCheckFailed(int256)` with caller allowance unchanged.
 - `testRevert_ExactOutSlippageDoesNotSpendAllowance` uses an impossible exact-out input threshold and asserts `SlippageCheckFailed(int256)` with caller allowance unchanged.
 - `testRevert_ArbitraryForwardeeCannotLeaveThirdTokenDebt` uses a malicious forwardee that withdraws a third token during `Core.forward`, leaving nonzero Core debt and causing `DebtsNotZeroed(uint256)`.
+- `testFuzz_ExactInCannotSpendMoreThanSpecifiedAmount` fuzzes recipient and spend amount inputs, asserting exact-in routes never spend more caller balance or allowance than the specified input.
+- `testFuzz_RecipientApprovalIsNeverUsedAsPayer` fuzzes recipient inputs while the recipient has approved the router, asserting recipient balance and allowance remain unchanged.
+- `testFuzz_ExactOutCannotSpendMoreThanInputThreshold` fuzzes recipient and maximum input threshold inputs, asserting exact-out routes never spend more caller balance or allowance than the encoded input limit.
 
 No router implementation change was required; this finding was a regression-coverage improvement.
 
@@ -140,6 +143,7 @@ Commands run after addressing this report:
 
 ```sh
 forge fmt test/YulRouter.t.sol
+forge test --match-test testFuzz_
 forge test --match-path test/YulRouter.t.sol
 forge test
 ```
@@ -147,5 +151,6 @@ forge test
 Results:
 
 - `forge fmt test/YulRouter.t.sol`: formatted the updated test file.
-- `forge test --match-path test/YulRouter.t.sol`: passed. Foundry reported 13 passed, 0 failed, 0 skipped. It also emitted existing dependency compiler warnings from `lib/solady`, but the command exited successfully and ran the suite.
-- `forge test`: passed. Foundry reported 13 passed, 0 failed, 0 skipped. It also emitted the existing Yul parser diagnostic `error: expected identifier, found <string>` for `src/YulRouter.yul:1:8`, but the command exited successfully and ran the suite.
+- `forge test --match-test testFuzz_`: passed. Foundry reported 3 passed, 0 failed, 0 skipped.
+- `forge test --match-path test/YulRouter.t.sol`: passed. Foundry reported 16 passed, 0 failed, 0 skipped. It also emitted existing dependency compiler warnings from `lib/solady`, but the command exited successfully and ran the suite.
+- `forge test`: passed. Foundry reported 16 passed, 0 failed, 0 skipped. It also emitted the existing Yul parser diagnostic `error: expected identifier, found <string>` for `src/YulRouter.yul:1:8`, but the command exited successfully and ran the suite.
