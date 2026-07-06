@@ -183,17 +183,17 @@ object "YulRouter" {
 
                             let forwardAmount := currentAmount
                             let tokenBeforeWrapper := currentToken
-                            if eq(tokenBeforeWrapper, underlying) {
-                                currentToken := wrapped
+                            let isUnderlying := eq(tokenBeforeWrapper, underlying)
+                            let isWrapped := eq(tokenBeforeWrapper, wrapped)
+
+                            if iszero(or(isUnderlying, isWrapped)) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
                             }
 
-                            if eq(tokenBeforeWrapper, wrapped) {
+                            currentToken := wrapped
+                            if isWrapped {
                                 forwardAmount := sub(0, currentAmount)
                                 currentToken := underlying
-                            }
-
-                            if and(iszero(eq(tokenBeforeWrapper, underlying)), iszero(eq(tokenBeforeWrapper, wrapped))) {
-                                revertSelector(0x84e505d2) // InvalidRoute()
                             }
 
                             forwardWrapper(coreAddress, wrapped, forwardAmount)
