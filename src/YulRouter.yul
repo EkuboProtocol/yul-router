@@ -44,12 +44,12 @@ object "YulRouter" {
                 mstore(add(size, 4), caller())
                 mstore(add(size, 0x24), callvalue())
 
-                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0x20)) {
+                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
 
-                return(0, 0x20)
+                return(0, 0)
             }
 
             function locked(coreAddress) {
@@ -252,8 +252,7 @@ object "YulRouter" {
                     }
                 }
 
-                mstore(0, totalCalculated)
-                return(0, 0x20)
+                return(0, 0)
             }
 
             function resolveDirection(currentToken, token0, token1) -> isToken1 {
@@ -396,14 +395,7 @@ object "YulRouter" {
                 mstore(36, coreAddress)
                 mstore(68, amount)
 
-                let success := call(gas(), token, 0, 0, 100, 0, 32)
-                if iszero(and(success, or(iszero(returndatasize()), eq(mload(0), 1)))) {
-                    if returndatasize() {
-                        returndatacopy(0, 0, returndatasize())
-                        revert(0, returndatasize())
-                    }
-                    revertSelector(0x7939f424) // TransferFromFailed()
-                }
+                pop(call(gas(), token, 0, 0, 100, 0, 0))
 
                 // completePayments(token)
                 mstore(0, shl(224, 0x12e103f1))

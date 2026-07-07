@@ -155,11 +155,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_core_hop");
         assertTrue(success, "router call");
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_SwapExactInVe33Hop() external {
@@ -177,11 +176,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_ve33_hop");
         assertTrue(success, "router call");
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_SwapExactInForwardedHop() external {
@@ -197,11 +195,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_forwarded_hop");
         assertTrue(success, "router call");
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_WrapperHop() external {
@@ -228,9 +225,8 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_wrapper_hop");
         assertTrue(success, "router call");
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertEq(calculatedAmount, int256(uint256(SWAP_AMOUNT)), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(WRAPPED_TOKEN0).balanceOf(address(this)) - wrappedBefore, SWAP_AMOUNT, "wrapped received");
     }
@@ -267,11 +263,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_multi_multihop");
         assertTrue(success, "router call");
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT * 2, "token0 spent");
-        assertEq(IERC20(TOKEN2).balanceOf(address(this)) - token2Before, uint256(calculatedAmount), "token2 received");
+        assertGt(IERC20(TOKEN2).balanceOf(address(this)) - token2Before, 0, "token2 received");
     }
 
     function test_SdkGeneratedRoutes() external {
@@ -471,11 +466,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
 
         if (success) {
-            int256 calculatedAmount = abi.decode(returndata, (int256));
             uint256 spent = balanceBefore - IERC20(TOKEN1).balanceOf(payer);
 
-            assertLt(calculatedAmount, int256(0), "calculated amount");
-            assertEq(spent, uint256(-calculatedAmount), "payer spent");
+            assertEq(returndata.length, 0, "return data");
+            assertGt(spent, 0, "payer spent");
             assertLe(spent, maxInput, "max input");
             assertEq(allowanceBefore - IERC20(TOKEN1).allowance(payer, router), spent, "allowance spent");
         } else {
@@ -527,13 +521,10 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         vm.snapshotGasLastCall("yul_router", gasName);
         assertTrue(success, gasName);
+        assertEq(returndata.length, 0, "return data");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(tokenInBefore - IERC20(tokenIn).balanceOf(address(this)), amountIn, "tokenIn spent");
-        assertEq(
-            IERC20(tokenOut).balanceOf(address(this)) - tokenOutBefore, uint256(calculatedAmount), "tokenOut received"
-        );
+        assertGt(IERC20(tokenOut).balanceOf(address(this)) - tokenOutBefore, 0, "tokenOut received");
     }
 
     function _assertRouterReverts(bytes memory data, bytes4 selector) private {
