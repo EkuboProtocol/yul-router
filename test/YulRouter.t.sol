@@ -152,14 +152,12 @@ contract YulRouterTest is Test {
         uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
         uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_core_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_SwapExactInVe33Hop() external {
@@ -174,14 +172,12 @@ contract YulRouterTest is Test {
         uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
         uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_ve33_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_SwapExactInForwardedHop() external {
@@ -194,29 +190,21 @@ contract YulRouterTest is Test {
         uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
         uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_forwarded_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
-        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+        assertGt(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, 0, "token1 received");
     }
 
     function test_WrapperHop() external {
         bytes memory data = bytes.concat(
-            bytes1(uint8(1)), // has recipient
-            bytes1(uint8(0)), // one multi-hop
-            bytes20(TOKEN0),
-            bytes20(WRAPPED_TOKEN0),
-            bytes16(uint128(0)),
-            bytes20(address(this)),
+            _encodeRoutePrefix(TOKEN0, WRAPPED_TOKEN0, address(this), int128(0), int128(SWAP_AMOUNT), 0),
             bytes16(SWAP_AMOUNT),
             bytes1(uint8(0)), // one hop
-            bytes1(uint8(2)), // wrapper hop
-            bytes20(TOKEN0),
-            bytes20(WRAPPED_TOKEN0)
+            bytes1(uint8(3)), // wrapper hop
+            bytes1(uint8(0)) // wrap
         );
 
         deal(TOKEN0, address(this), SWAP_AMOUNT);
@@ -225,12 +213,10 @@ contract YulRouterTest is Test {
         uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
         uint256 wrappedBefore = IERC20(WRAPPED_TOKEN0).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_wrapper_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertEq(calculatedAmount, int256(uint256(SWAP_AMOUNT)), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(WRAPPED_TOKEN0).balanceOf(address(this)) - wrappedBefore, SWAP_AMOUNT, "wrapped received");
     }
@@ -243,18 +229,14 @@ contract YulRouterTest is Test {
         _initializeAndSeed(key02);
 
         bytes memory data = bytes.concat(
-            bytes1(uint8(1)), // has recipient
-            bytes1(uint8(1)), // two multi-hops
-            bytes20(TOKEN0),
-            bytes20(TOKEN2),
-            bytes16(uint128(0)),
-            bytes20(address(this)),
+            _encodeRoutePrefix(TOKEN0, TOKEN2, address(this), int128(0), int128(SWAP_AMOUNT), 1),
             bytes16(SWAP_AMOUNT),
             bytes1(uint8(0)), // one hop
             _encodeSwapHop(bytes1(uint8(0)), address(0), key02),
             bytes16(SWAP_AMOUNT),
             bytes1(uint8(1)), // two hops
             _encodeSwapHop(bytes1(uint8(0)), address(0), key01),
+            _encodePathToken(TOKEN1),
             _encodeSwapHop(bytes1(uint8(0)), address(0), key12)
         );
 
@@ -264,14 +246,12 @@ contract YulRouterTest is Test {
         uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
         uint256 token2Before = IERC20(TOKEN2).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", "hand_multi_multihop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT * 2, "token0 spent");
-        assertEq(IERC20(TOKEN2).balanceOf(address(this)) - token2Before, uint256(calculatedAmount), "token2 received");
+        assertGt(IERC20(TOKEN2).balanceOf(address(this)) - token2Before, 0, "token2 received");
     }
 
     function test_SdkGeneratedRoutes() external {
@@ -468,14 +448,12 @@ contract YulRouterTest is Test {
         uint256 allowanceBefore = IERC20(TOKEN1).allowance(payer, router);
 
         vm.prank(payer);
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
 
         if (success) {
-            int256 calculatedAmount = abi.decode(returndata, (int256));
             uint256 spent = balanceBefore - IERC20(TOKEN1).balanceOf(payer);
 
-            assertLt(calculatedAmount, int256(0), "calculated amount");
-            assertEq(spent, uint256(-calculatedAmount), "payer spent");
+            assertGt(spent, 0, "payer spent");
             assertLe(spent, maxInput, "max input");
             assertEq(allowanceBefore - IERC20(TOKEN1).allowance(payer, router), spent, "allowance spent");
         } else {
@@ -524,16 +502,12 @@ contract YulRouterTest is Test {
         uint256 tokenInBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 tokenOutBefore = IERC20(tokenOut).balanceOf(address(this));
 
-        (bool success, bytes memory returndata) = router.call(data);
+        (bool success,) = router.call(data);
         vm.snapshotGasLastCall("yul_router", gasName);
         assertTrue(success, gasName);
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
-        assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(tokenInBefore - IERC20(tokenIn).balanceOf(address(this)), amountIn, "tokenIn spent");
-        assertEq(
-            IERC20(tokenOut).balanceOf(address(this)) - tokenOutBefore, uint256(calculatedAmount), "tokenOut received"
-        );
+        assertGt(IERC20(tokenOut).balanceOf(address(this)) - tokenOutBefore, 0, "tokenOut received");
     }
 
     function _assertRouterReverts(bytes memory data, bytes4 selector) private {
@@ -620,37 +594,71 @@ contract YulRouterTest is Test {
         int128 specifiedAmount
     ) private pure returns (bytes memory) {
         return bytes.concat(
-            bytes1(uint8(1)), // has recipient
-            bytes1(uint8(0)), // one multi-hop
-            bytes20(specifiedToken),
-            bytes20(calculatedToken),
-            bytes16(_encodeInt128(threshold)),
-            bytes20(recipient),
-            bytes16(_encodeInt128(specifiedAmount)),
+            _encodeRoutePrefix(specifiedToken, calculatedToken, recipient, threshold, specifiedAmount, 0),
+            bytes16(_absInt128(specifiedAmount)),
             bytes1(uint8(0)), // one hop
             _encodeSwapHop(hopType, forwardee, key)
         );
     }
 
     function _encodeSwapHop(bytes1 hopType, address forwardee, PoolKey memory key) private pure returns (bytes memory) {
-        bytes memory forwardeePart = hopType == bytes1(uint8(1)) || hopType == bytes1(uint8(3))
-            ? abi.encodePacked(bytes20(forwardee))
-            : bytes("");
+        uint256 config = uint256(PoolConfig.unwrap(key.config));
+
+        if (hopType == bytes1(uint8(1))) {
+            return bytes.concat(bytes1(uint8(2)), bytes1(0), bytes20(forwardee), bytes32(PoolConfig.unwrap(key.config)));
+        }
+
+        if (hopType == bytes1(uint8(3))) {
+            return bytes.concat(bytes1(uint8(4)), bytes1(0), bytes20(forwardee), bytes4(uint32(config)));
+        }
+
+        address extension = address(uint160(config >> 96));
+        if (extension == address(0)) {
+            return bytes.concat(bytes1(uint8(0)), bytes1(0), bytes8(uint64(config >> 32)), bytes4(uint32(config)));
+        }
+
+        return bytes.concat(bytes1(uint8(1)), bytes1(0), bytes32(PoolConfig.unwrap(key.config)));
+    }
+
+    function _encodeRoutePrefix(
+        address specifiedToken,
+        address calculatedToken,
+        address recipient,
+        int128 threshold,
+        int128 specifiedAmount,
+        uint8 additionalMultiHops
+    ) private pure returns (bytes memory) {
+        uint8 flags = 1; // has recipient
+        if (specifiedAmount < 0) flags |= 2;
+        if (specifiedToken == address(0)) flags |= 8;
+        if (calculatedToken == address(0)) flags |= 16;
+
+        bytes memory thresholdPart = threshold == 0 ? bytes("") : abi.encodePacked(bytes16(_absInt128(threshold)));
 
         return bytes.concat(
-            hopType,
-            forwardeePart,
-            bytes20(key.token0),
-            bytes20(key.token1),
-            bytes32(PoolConfig.unwrap(key.config)),
-            bytes12(uint96(0)), // default sqrt ratio limit
-            bytes4(uint32(0))
+            bytes1(flags),
+            bytes1(additionalMultiHops),
+            bytes1(uint8(16)), // hand-written tests use a fixed amount width
+            bytes1(uint8(thresholdPart.length)),
+            thresholdPart,
+            specifiedToken == address(0) ? bytes("") : abi.encodePacked(bytes20(specifiedToken)),
+            calculatedToken == address(0) ? bytes("") : abi.encodePacked(bytes20(calculatedToken)),
+            bytes20(recipient)
         );
+    }
+
+    function _encodePathToken(address token) private pure returns (bytes memory) {
+        if (token == address(0)) return abi.encodePacked(bytes1(uint8(0)));
+        return abi.encodePacked(bytes1(uint8(1)), bytes20(token));
     }
 
     function _encodeInt128(int128 value) private pure returns (uint128 encoded) {
         assembly ("memory-safe") {
             encoded := value
         }
+    }
+
+    function _absInt128(int128 value) private pure returns (uint128) {
+        return uint128(value < 0 ? -value : value);
     }
 }

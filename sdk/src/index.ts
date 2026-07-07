@@ -17,6 +17,7 @@ export const MIN_CALCULATED_AMOUNT_THRESHOLD = minInt128;
 export const MAX_CALCULATED_AMOUNT_THRESHOLD = maxInt128;
 export const MAX_MULTIHOP_LENGTH = 256;
 export const MAX_HOP_LENGTH = 256;
+export const MAX_SKIP_AHEAD = 0xff;
 
 export interface PoolKey {
   token0: Address;
@@ -107,11 +108,16 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
   const specified = getAddress(specifiedToken);
   const calculated = getAddress(calculatedToken);
   let isExactOut: boolean | undefined;
-  const encodedMultiHops: Hex[] = [];
+  let maxSpecifiedAmount = 0n;
+  let hasSqrtRatioLimits = false;
 
-  for (const multiHop of multiHops) {
-    const { specifiedAmount, hops } = multiHop;
+  for (const { specifiedAmount, hops } of multiHops) {
     assertInt128(specifiedAmount, "specifiedAmount");
+
+    const specifiedMagnitude = abs(specifiedAmount);
+    if (specifiedMagnitude > maxSpecifiedAmount) {
+      maxSpecifiedAmount = specifiedMagnitude;
+    }
 
     if (specifiedAmount !== 0n) {
       const multiHopExactOut = specifiedAmount < 0n;
@@ -125,14 +131,53 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       throw new Error(`each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`);
     }
 
+    for (const hop of hops) {
+      if ("sqrtRatioLimit" in hop && hop.sqrtRatioLimit !== undefined && hop.sqrtRatioLimit !== 0n) {
+        hasSqrtRatioLimits = true;
+      }
+    }
+  }
+
+  if (calculatedAmountThreshold !== undefined) {
+    assertInt128(calculatedAmountThreshold, "calculatedAmountThreshold");
+    const thresholdExactOut = calculatedAmountThreshold < 0n;
+    if (isExactOut !== undefined && calculatedAmountThreshold !== 0n && thresholdExactOut !== isExactOut) {
+      throw new Error("calculatedAmountThreshold sign and specified amount signs have to match");
+    }
+    if (calculatedAmountThreshold !== 0n) {
+      isExactOut ??= thresholdExactOut;
+    }
+  }
+  isExactOut ??= false;
+
+  const specifiedAmountBytes = byteSize(maxSpecifiedAmount);
+  const thresholdMagnitude = calculatedAmountThreshold === undefined ? 0n : abs(calculatedAmountThreshold);
+  const thresholdBytes = byteSize(thresholdMagnitude);
+
+  if (specifiedAmountBytes > 16 || thresholdBytes > 16) {
+    throw new Error("amounts must fit into int128");
+  }
+
+  const encodedMultiHops: Hex[] = [];
+  for (const multiHop of multiHops) {
+    const { specifiedAmount, hops } = multiHop;
     let currentToken = specified;
     const encodedHops: Hex[] = [];
 
-    for (const hop of hops) {
+    for (let i = 0; i < hops.length; i++) {
+      const hop = hops[i];
+      const last = i === hops.length - 1;
+
       switch (hop.type) {
         case "core": {
           const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
-          encodedHops.push(encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead));
+          encodedHops.push(
+            concatHex([
+              encodeCoreHop(hop.poolKey, hop.skipAhead),
+              encodeRouteSqrtRatioLimit(hasSqrtRatioLimits, hop.sqrtRatioLimit, currentToken, nextToken, isExactOut),
+              ...(last ? [] : [encodePathToken(nextToken)]),
+            ]),
+          );
           currentToken = nextToken;
           break;
         }
@@ -141,11 +186,12 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           const { nextToken } = resolvePoolHop(currentToken, poolKey);
           encodedHops.push(
             concatHex([
-              "0x01",
-              encodeAddress(forwardee),
-              encodePoolKey(poolKey),
-              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+              "0x02",
               encodeSkipAhead(hop.skipAhead),
+              encodeAddress(forwardee),
+              encodeConfig(poolKey.config),
+              encodeRouteSqrtRatioLimit(hasSqrtRatioLimits, hop.sqrtRatioLimit, currentToken, nextToken, isExactOut),
+              ...(last ? [] : [encodePathToken(nextToken)]),
             ]),
           );
           currentToken = nextToken;
@@ -156,11 +202,12 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           const { nextToken } = resolvePoolHop(currentToken, poolKey);
           encodedHops.push(
             concatHex([
-              "0x03",
-              encodeAddress(forwardee),
-              encodePoolKey(poolKey),
-              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+              "0x04",
               encodeSkipAhead(hop.skipAhead),
+              encodeAddress(forwardee),
+              encodeVe33PoolTypeConfig(poolKey.config),
+              encodeRouteSqrtRatioLimit(hasSqrtRatioLimits, hop.sqrtRatioLimit, currentToken, nextToken, isExactOut),
+              ...(last ? [] : [encodePathToken(nextToken)]),
             ]),
           );
           currentToken = nextToken;
@@ -172,14 +219,25 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           if (hexToBigInt(underlying) === hexToBigInt(wrapped)) {
             throw new Error("underlying and wrapped token must differ");
           }
+
+          let unwrap: boolean;
           if (currentToken === underlying) {
             currentToken = wrapped;
+            unwrap = false;
           } else if (currentToken === wrapped) {
             currentToken = underlying;
+            unwrap = true;
           } else {
             throw new Error("wrapper hop is disconnected");
           }
-          encodedHops.push(concatHex(["0x02", encodeAddress(underlying), encodeAddress(wrapped)]));
+
+          encodedHops.push(
+            concatHex([
+              "0x03",
+              numberToHex(unwrap ? 1 : 0, { size: 1 }),
+              ...(last ? [] : [encodePathToken(currentToken)]),
+            ]),
+          );
           break;
         }
       }
@@ -191,29 +249,28 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
 
     encodedMultiHops.push(
       concatHex([
-        encodeInt128(specifiedAmount),
+        encodeMagnitude(specifiedAmount, specifiedAmountBytes),
         numberToHex(hops.length - 1, { size: 1 }),
         ...encodedHops,
       ]),
     );
   }
 
-  const threshold =
-    calculatedAmountThreshold ??
-    (isExactOut === true ? MIN_CALCULATED_AMOUNT_THRESHOLD : 0n);
-  assertInt128(threshold, "calculatedAmountThreshold");
+  const flags =
+    (recipient ? 1 : 0) |
+    (isExactOut ? 2 : 0) |
+    (hasSqrtRatioLimits ? 4 : 0) |
+    (isNative(specified) ? 8 : 0) |
+    (isNative(calculated) ? 16 : 0);
 
-  if (threshold !== 0n && isExactOut !== undefined && (threshold < 0n) !== isExactOut) {
-    throw new Error("calculatedAmountThreshold sign and specified amount signs have to match");
-  }
-
-  const flags = recipient ? 1 : 0;
   const header = concatHex([
     numberToHex(flags, { size: 1 }),
     numberToHex(multiHops.length - 1, { size: 1 }),
-    encodeAddress(specified),
-    encodeAddress(calculated),
-    encodeInt128(threshold),
+    numberToHex(specifiedAmountBytes, { size: 1 }),
+    numberToHex(thresholdBytes, { size: 1 }),
+    encodeUnsigned(thresholdMagnitude, thresholdBytes),
+    ...(isNative(specified) ? [] : [encodeAddress(specified)]),
+    ...(isNative(calculated) ? [] : [encodeAddress(calculated)]),
     ...(recipient ? [encodeAddress(recipient)] : []),
   ]);
 
@@ -237,44 +294,79 @@ function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {
   throw new Error("pool hop is disconnected");
 }
 
-function encodeSwapHop(kind: "00", poolKey: PoolKey, sqrtRatioLimit?: bigint, skipAhead?: number): Hex {
-  return concatHex([
-    `0x${kind}`,
-    encodePoolKey(poolKey),
-    encodeSqrtRatioLimit(sqrtRatioLimit),
-    encodeSkipAhead(skipAhead),
-  ]);
+function encodeCoreHop(poolKey: PoolKey, skipAhead?: number): Hex {
+  const config = encodeConfig(poolKey.config);
+  const extension = getAddress(`0x${config.slice(2, 42)}` as Address);
+  if (isNative(extension)) {
+    return concatHex(["0x00", encodeSkipAhead(skipAhead), `0x${config.slice(42)}`]);
+  }
+
+  return concatHex(["0x01", encodeSkipAhead(skipAhead), config]);
 }
 
-function encodePoolKey(poolKey: PoolKey): Hex {
-  const token0 = getAddress(poolKey.token0);
-  const token1 = getAddress(poolKey.token1);
-  if (hexToBigInt(token0) >= hexToBigInt(token1)) {
-    throw new Error("poolKey tokens must be sorted");
+function encodeConfig(config: Hex): Hex {
+  return padHex(config, { size: 32 });
+}
+
+function encodeVe33PoolTypeConfig(config: Hex): Hex {
+  const full = encodeConfig(config);
+  const fee = hexToBigInt(`0x${full.slice(42, 58)}`);
+  if (fee !== 0n) {
+    throw new Error("ve33 pool fee must be zero");
   }
-  const config = padHex(poolKey.config, { size: 32 });
-  return concatHex([encodeAddress(token0), encodeAddress(token1), config]);
+  return `0x${full.slice(58)}`;
+}
+
+function encodeRouteSqrtRatioLimit(
+  enabled: boolean,
+  value: bigint | undefined,
+  currentToken: Address,
+  nextToken: Address,
+  exactOut: boolean,
+): Hex {
+  if (!enabled) {
+    return "0x";
+  }
+
+  const limit = value === undefined || value === 0n
+    ? defaultSqrtRatioLimit(currentToken, nextToken, exactOut)
+    : value;
+  if (limit < MIN_SQRT_RATIO || limit > MAX_SQRT_RATIO) {
+    throw new Error("invalid sqrtRatioLimit");
+  }
+  return numberToHex(limit, { size: 12 });
+}
+
+function defaultSqrtRatioLimit(currentToken: Address, nextToken: Address, exactOut: boolean): bigint {
+  const isToken1 = hexToBigInt(currentToken) > hexToBigInt(nextToken);
+  return exactOut !== isToken1 ? MAX_SQRT_RATIO : MIN_SQRT_RATIO;
+}
+
+function encodePathToken(token: Address): Hex {
+  return isNative(token) ? "0x00" : concatHex(["0x01", encodeAddress(token)]);
 }
 
 function encodeAddress(address: Address): Hex {
   return getAddress(address);
 }
 
-function encodeSqrtRatioLimit(value: bigint | undefined): Hex {
-  if (value === undefined || value === 0n) {
-    return "0x000000000000000000000000";
+function encodeSkipAhead(skipAhead = 0): Hex {
+  if (!Number.isInteger(skipAhead) || skipAhead < 0 || skipAhead > MAX_SKIP_AHEAD) {
+    throw new Error("skipAhead must fit into uint8");
   }
-  if (value < MIN_SQRT_RATIO || value > MAX_SQRT_RATIO) {
-    throw new Error("invalid sqrtRatioLimit");
-  }
-  return numberToHex(value, { size: 12 });
+  return numberToHex(skipAhead, { size: 1 });
 }
 
-function encodeSkipAhead(skipAhead = 0): Hex {
-  if (!Number.isInteger(skipAhead) || skipAhead < 0 || skipAhead > 0x7fffffff) {
-    throw new Error("skipAhead must fit into uint31");
-  }
-  return numberToHex(skipAhead, { size: 4 });
+function encodeMagnitude(value: bigint, bytes: number): Hex {
+  return encodeUnsigned(abs(value), bytes);
+}
+
+function encodeUnsigned(value: bigint, bytes: number): Hex {
+  return bytes === 0 ? "0x" : numberToHex(value, { size: bytes });
+}
+
+function byteSize(value: bigint): number {
+  return value === 0n ? 0 : size(numberToHex(value));
 }
 
 function assertInt128(value: bigint, name: string) {
@@ -283,9 +375,12 @@ function assertInt128(value: bigint, name: string) {
   }
 }
 
-function encodeInt128(value: bigint): Hex {
-  assertInt128(value, "value");
-  return numberToHex(BigInt.asUintN(128, value), { size: 16 });
+function abs(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
+function isNative(address: Address): boolean {
+  return hexToBigInt(address) === 0n;
 }
 
 export function calldataSize(data: Hex): number {

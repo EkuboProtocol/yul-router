@@ -26,7 +26,9 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data.slice(0, 6)).toBe("0x0000");
+    expect(data).toBe(
+      "0x080003030dbba022222222222222222222222222222222222222220f42400100000000000000000000000000000111111111111111111111111111111111111111110003000000000000000000000000",
+    );
   });
 
   it("encodes forwarded and wrapper hop types", () => {
@@ -41,9 +43,9 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data.slice(0, 4)).toBe("0x01");
-    expect(data).toContain("02");
-    expect(data).toContain("01");
+    expect(data).toBe(
+      "0x090001001111111111111111111111111111111111111111333333333333333333333333333333333333333301010300012222222222222222222222222222222222222222020033333333333333333333333333333333333333330000000000000000000000000000000000000000000000000000000000000000",
+    );
   });
 
   it("encodes ve33 hops with an explicit forwardee", () => {
@@ -60,7 +62,9 @@ describe("encodeRoute", () => {
       ],
     });
 
-    expect(data).toContain(`03${extension.slice(2).toLowerCase()}`);
+    expect(data).toBe(
+      "0x08000100111111111111111111111111111111111111111101000400333333333333333333333333333333333333333300000000",
+    );
   });
 
   it("rejects disconnected hops", () => {
@@ -96,7 +100,9 @@ describe("encodeRoutes", () => {
       ],
     });
 
-    expect(data.slice(0, 6)).toBe("0x0101");
+    expect(data).toBe(
+      "0x090101002222222222222222222222222222222222222222333333333333333333333333333333333333333301000000000000000000000000000000020100000000000000000000000000000111111111111111111111111111111111111111110000000000000000000000000000",
+    );
     expect(
       generateCalldata({
         specifiedToken: token0,
@@ -182,5 +188,14 @@ describe("encodeRoutes", () => {
         ],
       }),
     ).toThrow("hops");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        hops: [{ type: "core", poolKey: { token0, token1, config }, skipAhead: 0x100 }],
+      }),
+    ).toThrow("skipAhead must fit into uint8");
   });
 });
