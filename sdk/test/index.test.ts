@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import {
+  encodePoolBalanceUpdate,
   encodeRoute,
   encodeRoutes,
+  encodeSignedSwapMeta,
   generateCalldata,
   MAX_HOP_LENGTH,
   MAX_MULTIHOP_LENGTH,
+  MIN_CALCULATED_AMOUNT_THRESHOLD,
+  YUL_ROUTER_ADDRESS,
 } from "../src/index.js";
 
 const token0 = "0x0000000000000000000000000000000000000000";
@@ -12,6 +16,12 @@ const token1 = "0x1111111111111111111111111111111111111111";
 const token2 = "0x2222222222222222222222222222222222222222";
 const extension = "0x3333333333333333333333333333333333333333";
 const config = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+describe("constants", () => {
+  it("exports the deterministic Yul router address", () => {
+    expect(YUL_ROUTER_ADDRESS).toBe("0x000000005fdB8E48978C5c804d406b76481674E8");
+  });
+});
 
 describe("encodeRoute", () => {
   it("encodes a selectorless core multihop route with explicit tokens", () => {
@@ -61,6 +71,60 @@ describe("encodeRoute", () => {
     });
 
     expect(data).toContain(`03${extension.slice(2).toLowerCase()}`);
+  });
+
+  it("encodes signed exclusive swap hops with signed payload fields", () => {
+    const meta = encodeSignedSwapMeta({
+      authorizedLocker: extension,
+      deadline: 1_800_000_000,
+      fee: 123,
+      nonce: 456n,
+    });
+    const minBalanceUpdate = encodePoolBalanceUpdate(MIN_CALCULATED_AMOUNT_THRESHOLD, MIN_CALCULATED_AMOUNT_THRESHOLD);
+    const signature = "0x123456";
+
+    const data = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      hops: [
+        {
+          type: "signedExclusiveSwap",
+          forwardee: extension,
+          poolKey: { token0, token1, config },
+          meta,
+          minBalanceUpdate,
+          signature,
+        },
+      ],
+    });
+
+    expect(data).toContain(`04${extension.slice(2).toLowerCase()}`);
+    expect(data).toContain(meta.slice(2));
+    expect(data).toContain(minBalanceUpdate.slice(2));
+    expect(data.endsWith("00000003123456")).toBe(true);
+  });
+
+  it("rejects oversized signed exclusive swap fields", () => {
+    expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0 })).toThrow("deadline");
+    expect(() => encodePoolBalanceUpdate(MIN_CALCULATED_AMOUNT_THRESHOLD - 1n, 0n)).toThrow("delta0");
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        hops: [
+          {
+            type: "signedExclusiveSwap",
+            forwardee: extension,
+            poolKey: { token0, token1, config },
+            meta: 1n << 256n,
+            minBalanceUpdate: "0x00",
+            signature: "0x",
+          },
+        ],
+      }),
+    ).toThrow("meta");
   });
 
   it("rejects disconnected hops", () => {

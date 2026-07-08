@@ -15,6 +15,8 @@ multi-hop has its own specified amount and sequence of hops, all starting from t
 the same `calculatedToken`. The router executes every multi-hop under one Core lock, aggregates the specified/calculated
 amounts, applies one slippage check, and settles once.
 
+The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment address.
+
 `encodeRoute(...)` remains as a convenience wrapper for a single multi-hop path.
 
 Supported hop types:
@@ -22,6 +24,7 @@ Supported hop types:
 - `core`: direct `Core.swap_6269342730()` using the provided pool key.
 - `forwarded`: `Core.forward(forwardee, abi.encode(poolKey, params))` for MEV-capture-compatible forwarded swap extensions.
 - `ve33`: `Core.forward(forwardee, abi.encode(uint256(0), poolKey, params))` for Ve33-compatible pools that prefix forwarded swap data with a call type.
+- `signedExclusiveSwap`: `Core.forward(forwardee, abi.encode(poolKey, params, meta, minBalanceUpdate, signature))` for SignedExclusiveSwap pools.
 - `wrapper`: `Core.forward(wrapper, abi.encode(int256 amount))` for Ekubo token wrappers.
 
 Not supported by design:

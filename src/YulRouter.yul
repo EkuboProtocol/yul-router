@@ -213,6 +213,52 @@ object "YulRouter" {
                             let update := ve33Swap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
                             currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
                         }
+                        case 4 {
+                            if gt(add(offset, 176), routeEnd) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+                            let forwardee := shr(96, calldataload(offset))
+                            let token0 := shr(96, calldataload(add(offset, 20)))
+                            let token1 := shr(96, calldataload(add(offset, 40)))
+                            let config := calldataload(add(offset, 60))
+                            let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
+                            let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
+                            let meta := calldataload(add(offset, 108))
+                            let minBalanceUpdate := calldataload(add(offset, 140))
+                            let signatureLength := shr(224, calldataload(add(offset, 172)))
+                            let signatureOffset := add(offset, 176)
+                            offset := add(signatureOffset, signatureLength)
+
+                            if or(gt(offset, routeEnd), lt(offset, signatureOffset)) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
+
+                            let isToken1 := resolveDirection(currentToken, token0, token1)
+
+                            if iszero(sqrtRatioLimit) {
+                                sqrtRatioLimit := minSqrtRatio
+                                if xor(slt(currentAmount, 0), isToken1) {
+                                    sqrtRatioLimit := maxSqrtRatio
+                                }
+                            }
+
+                            let update := signedExclusiveSwap(
+                                coreAddress,
+                                forwardee,
+                                token0,
+                                token1,
+                                config,
+                                currentAmount,
+                                isToken1,
+                                sqrtRatioLimit,
+                                skipAhead,
+                                meta,
+                                minBalanceUpdate,
+                                signatureOffset,
+                                signatureLength
+                            )
+                            currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
+                        }
                         default {
                             revertSelector(0xee7d6c3a) // InvalidHopType()
                         }
@@ -320,6 +366,49 @@ object "YulRouter" {
                 }
 
                 update := mload(0)
+            }
+
+            function signedExclusiveSwap(
+                coreAddress,
+                forwardee,
+                token0,
+                token1,
+                config,
+                amount,
+                isToken1,
+                sqrtRatioLimit,
+                skipAhead,
+                meta,
+                minBalanceUpdate,
+                signatureOffset,
+                signatureLength
+            ) -> update {
+                let ptr := 0x60
+                let dataPtr := add(ptr, 36)
+                let signaturePtr := add(dataPtr, 0x100)
+                let paddedSignatureLength := and(add(signatureLength, 31), not(31))
+
+                mstore(ptr, shl(224, 0x101e8952)) // forward(address)
+                mstore(add(ptr, 4), forwardee)
+
+                // abi.encode(PoolKey, SwapParameters, SignedSwapMeta, PoolBalanceUpdate, bytes)
+                mstore(dataPtr, token0)
+                mstore(add(dataPtr, 0x20), token1)
+                mstore(add(dataPtr, 0x40), config)
+                mstore(add(dataPtr, 0x60), packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
+                mstore(add(dataPtr, 0x80), meta)
+                mstore(add(dataPtr, 0xa0), minBalanceUpdate)
+                mstore(add(dataPtr, 0xc0), 0xe0)
+                mstore(add(dataPtr, 0xe0), signatureLength)
+                calldatacopy(signaturePtr, signatureOffset, signatureLength)
+                mstore(add(signaturePtr, signatureLength), 0)
+
+                if iszero(call(gas(), coreAddress, 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
+                    returndatacopy(ptr, 0, returndatasize())
+                    revert(ptr, returndatasize())
+                }
+
+                update := mload(ptr)
             }
 
             function forwardWrapper(coreAddress, wrapper, amount) {

@@ -17,6 +17,7 @@ export const MIN_CALCULATED_AMOUNT_THRESHOLD = minInt128;
 export const MAX_CALCULATED_AMOUNT_THRESHOLD = maxInt128;
 export const MAX_MULTIHOP_LENGTH = 256;
 export const MAX_HOP_LENGTH = 256;
+export const YUL_ROUTER_ADDRESS: Address = "0x000000005fdB8E48978C5c804d406b76481674E8";
 
 export interface PoolKey {
   token0: Address;
@@ -47,13 +48,24 @@ export interface Ve33Hop {
   skipAhead?: number;
 }
 
+export interface SignedExclusiveSwapHop {
+  type: "signedExclusiveSwap";
+  forwardee: Address;
+  poolKey: PoolKey;
+  meta: bigint | Hex;
+  minBalanceUpdate: Hex;
+  signature: Hex;
+  sqrtRatioLimit?: bigint;
+  skipAhead?: number;
+}
+
 export interface WrapperHop {
   type: "wrapper";
   underlying: Address;
   wrapped: Address;
 }
 
-export type Hop = CoreHop | ForwardedHop | Ve33Hop | WrapperHop;
+export type Hop = CoreHop | ForwardedHop | Ve33Hop | SignedExclusiveSwapHop | WrapperHop;
 
 export interface MultiHop {
   specifiedAmount: bigint;
@@ -166,6 +178,24 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           currentToken = nextToken;
           break;
         }
+        case "signedExclusiveSwap": {
+          const { poolKey, forwardee } = hop;
+          const { nextToken } = resolvePoolHop(currentToken, poolKey);
+          encodedHops.push(
+            concatHex([
+              "0x04",
+              encodeAddress(forwardee),
+              encodePoolKey(poolKey),
+              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+              encodeSkipAhead(hop.skipAhead),
+              encodeUint256(hop.meta, "meta"),
+              encodeBytes32(hop.minBalanceUpdate, "minBalanceUpdate"),
+              encodeSignature(hop.signature),
+            ]),
+          );
+          currentToken = nextToken;
+          break;
+        }
         case "wrapper": {
           const underlying = getAddress(hop.underlying);
           const wrapped = getAddress(hop.wrapped);
@@ -260,6 +290,31 @@ function encodeAddress(address: Address): Hex {
   return getAddress(address);
 }
 
+function encodeUint256(value: bigint | Hex, name: string): Hex {
+  if (typeof value === "bigint") {
+    if (value < 0n || value > (1n << 256n) - 1n) {
+      throw new Error(`${name} must fit into uint256`);
+    }
+    return numberToHex(value, { size: 32 });
+  }
+  return encodeBytes32(value, name);
+}
+
+function encodeBytes32(value: Hex, name: string): Hex {
+  if (size(value) > 32) {
+    throw new Error(`${name} must fit into bytes32`);
+  }
+  return padHex(value, { size: 32 });
+}
+
+function encodeSignature(signature: Hex): Hex {
+  const signatureLength = size(signature);
+  if (signatureLength > 0xffffffff) {
+    throw new Error("signature length must fit into uint32");
+  }
+  return concatHex([numberToHex(signatureLength, { size: 4 }), signature]);
+}
+
 function encodeSqrtRatioLimit(value: bigint | undefined): Hex {
   if (value === undefined || value === 0n) {
     return "0x000000000000000000000000";
@@ -286,6 +341,46 @@ function assertInt128(value: bigint, name: string) {
 function encodeInt128(value: bigint): Hex {
   assertInt128(value, "value");
   return numberToHex(BigInt.asUintN(128, value), { size: 16 });
+}
+
+export function encodePoolBalanceUpdate(delta0: bigint, delta1: bigint): Hex {
+  assertInt128(delta0, "delta0");
+  assertInt128(delta1, "delta1");
+  return numberToHex((BigInt.asUintN(128, delta0) << 128n) | BigInt.asUintN(128, delta1), {
+    size: 32,
+  });
+}
+
+export interface EncodeSignedSwapMetaParameters {
+  authorizedLocker?: Address;
+  deadline: number;
+  fee?: number;
+  nonce: bigint | number;
+}
+
+export function encodeSignedSwapMeta(params: EncodeSignedSwapMetaParameters): Hex {
+  const { authorizedLocker = "0x0000000000000000000000000000000000000000", deadline, fee = 0, nonce } = params;
+
+  if (!Number.isInteger(deadline) || deadline < 0 || deadline > 0xffffffff) {
+    throw new Error("deadline must fit into uint32");
+  }
+  if (!Number.isInteger(fee) || fee < 0 || fee > 0xffffffff) {
+    throw new Error("fee must fit into uint32");
+  }
+
+  const nonceValue = BigInt(nonce);
+  if (nonceValue < 0n || nonceValue > (1n << 64n) - 1n) {
+    throw new Error("nonce must fit into uint64");
+  }
+
+  const lockerLow128 = hexToBigInt(getAddress(authorizedLocker)) & ((1n << 128n) - 1n);
+  const meta =
+    (BigInt(deadline) << 224n) |
+    (BigInt(fee) << 192n) |
+    (nonceValue << 128n) |
+    lockerLow128;
+
+  return numberToHex(meta, { size: 32 });
 }
 
 export function calldataSize(data: Hex): number {
