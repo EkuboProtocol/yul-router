@@ -118,7 +118,7 @@ const cases = {
     calculatedToken: TOKEN1,
     recipient: RECIPIENT,
     specifiedAmount: SWAP_AMOUNT,
-    hops: [{ type: "ve33", forwardee: VE33, poolKey: ve33Pool }],
+    hops: [{ type: "forwarded", forwardee: VE33, poolKey: ve33Pool }],
   }),
   signedExclusiveSwap: encodeRoute({
     specifiedToken: TOKEN0,

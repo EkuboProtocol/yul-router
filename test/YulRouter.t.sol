@@ -703,7 +703,7 @@ contract YulRouterTest is Test {
     function _encodeVe33Route(address recipient) private pure returns (bytes memory) {
         PoolKey memory key = _ve33PoolKey();
 
-        return _encodeSwapRoute(recipient, bytes1(uint8(3)), VE33, key);
+        return _encodeSwapRoute(recipient, bytes1(uint8(1)), VE33, key);
     }
 
     function _encodeSwapRoute(address recipient, bytes1 hopType, address forwardee, PoolKey memory key)
@@ -770,9 +770,7 @@ contract YulRouterTest is Test {
     }
 
     function _encodeSwapHop(bytes1 hopType, address forwardee, PoolKey memory key) private pure returns (bytes memory) {
-        bytes memory forwardeePart = hopType == bytes1(uint8(1)) || hopType == bytes1(uint8(3))
-            ? abi.encodePacked(bytes20(forwardee))
-            : bytes("");
+        bytes memory forwardeePart = hopType == bytes1(uint8(1)) ? abi.encodePacked(bytes20(forwardee)) : bytes("");
 
         return bytes.concat(
             hopType,

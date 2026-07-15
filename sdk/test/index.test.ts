@@ -56,23 +56,6 @@ describe("encodeRoute", () => {
     expect(data).toContain("01");
   });
 
-  it("encodes ve33 hops with an explicit forwardee", () => {
-    const data = encodeRoute({
-      specifiedToken: token0,
-      calculatedToken: token1,
-      specifiedAmount: 1n,
-      hops: [
-        {
-          type: "ve33",
-          forwardee: extension,
-          poolKey: { token0, token1, config },
-        },
-      ],
-    });
-
-    expect(data).toContain(`03${extension.slice(2).toLowerCase()}`);
-  });
-
   it("encodes signed exclusive swap hops with signed payload fields", () => {
     const meta = encodeSignedSwapMeta({
       authorizedLocker: extension,

@@ -40,14 +40,6 @@ export interface ForwardedHop {
   skipAhead?: number;
 }
 
-export interface Ve33Hop {
-  type: "ve33";
-  forwardee: Address;
-  poolKey: PoolKey;
-  sqrtRatioLimit?: bigint;
-  skipAhead?: number;
-}
-
 export interface SignedExclusiveSwapHop {
   type: "signedExclusiveSwap";
   forwardee: Address;
@@ -65,7 +57,7 @@ export interface WrapperHop {
   wrapped: Address;
 }
 
-export type Hop = CoreHop | ForwardedHop | Ve33Hop | SignedExclusiveSwapHop | WrapperHop;
+export type Hop = CoreHop | ForwardedHop | SignedExclusiveSwapHop | WrapperHop;
 
 export interface MultiHop {
   specifiedAmount: bigint;
@@ -154,21 +146,6 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           encodedHops.push(
             concatHex([
               "0x01",
-              encodeAddress(forwardee),
-              encodePoolKey(poolKey),
-              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-              encodeSkipAhead(hop.skipAhead),
-            ]),
-          );
-          currentToken = nextToken;
-          break;
-        }
-        case "ve33": {
-          const { poolKey, forwardee } = hop;
-          const { nextToken } = resolvePoolHop(currentToken, poolKey);
-          encodedHops.push(
-            concatHex([
-              "0x03",
               encodeAddress(forwardee),
               encodePoolKey(poolKey),
               encodeSqrtRatioLimit(hop.sqrtRatioLimit),

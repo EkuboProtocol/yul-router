@@ -189,30 +189,6 @@ object "YulRouter" {
 
                             forwardWrapper(coreAddress, wrapped, forwardAmount)
                         }
-                        case 3 {
-                            if gt(add(offset, 108), routeEnd) {
-                                revertSelector(0x84e505d2) // InvalidRoute()
-                            }
-                            let forwardee := shr(96, calldataload(offset))
-                            let token0 := shr(96, calldataload(add(offset, 20)))
-                            let token1 := shr(96, calldataload(add(offset, 40)))
-                            let config := calldataload(add(offset, 60))
-                            let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
-                            let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
-                            offset := add(offset, 108)
-
-                            let isToken1 := resolveDirection(currentToken, token0, token1)
-
-                            if iszero(sqrtRatioLimit) {
-                                sqrtRatioLimit := minSqrtRatio
-                                if xor(slt(currentAmount, 0), isToken1) {
-                                    sqrtRatioLimit := maxSqrtRatio
-                                }
-                            }
-
-                            let update := ve33Swap(coreAddress, forwardee, token0, token1, config, currentAmount, isToken1, sqrtRatioLimit, skipAhead)
-                            currentAmount, currentToken := nextFromUpdate(update, currentAmount, isToken1, token0, token1)
-                        }
                         case 4 {
                             if gt(add(offset, 176), routeEnd) {
                                 revertSelector(0x84e505d2) // InvalidRoute()
@@ -349,23 +325,6 @@ object "YulRouter" {
                 }
 
                 update := mload(0x60)
-            }
-
-            function ve33Swap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                mstore(0x20, shl(224, 0x101e8952)) // forward(address)
-                mstore(0x24, forwardee)
-                mstore(0x44, 0) // Ve33 swap call type
-                mstore(0x64, token0)
-                mstore(0x84, token1)
-                mstore(0xa4, config)
-                mstore(0xc4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
-
-                if iszero(call(gas(), coreAddress, 0, 0x20, 196, 0, 64)) {
-                    returndatacopy(0x20, 0, returndatasize())
-                    revert(0x20, returndatasize())
-                }
-
-                update := mload(0)
             }
 
             function signedExclusiveSwap(
