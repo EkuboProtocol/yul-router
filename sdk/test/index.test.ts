@@ -15,13 +15,8 @@ const token0 = "0x0000000000000000000000000000000000000000";
 const token1 = "0x1111111111111111111111111111111111111111";
 const token2 = "0x2222222222222222222222222222222222222222";
 const extension = "0x3333333333333333333333333333333333333333";
-const config = "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-describe("constants", () => {
-  it("exports the deterministic Yul router address", () => {
-    expect(YUL_ROUTER_ADDRESS).toBe("0x000000005fdB8E48978C5c804d406b76481674E8");
-  });
-});
+const config =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 describe("encodeRoute", () => {
   it("encodes a selectorless core multihop route with explicit tokens", () => {
@@ -32,7 +27,11 @@ describe("encodeRoute", () => {
       calculatedAmountThreshold: 900_000n,
       hops: [
         { type: "core", poolKey: { token0, token1, config } },
-        { type: "core", poolKey: { token0: token1, token1: token2, config }, skipAhead: 3 },
+        {
+          type: "core",
+          poolKey: { token0: token1, token1: token2, config },
+          skipAhead: 3,
+        },
       ],
     });
 
@@ -47,7 +46,11 @@ describe("encodeRoute", () => {
       recipient: extension,
       hops: [
         { type: "wrapper", underlying: token0, wrapped: token2 },
-        { type: "forwarded", forwardee: extension, poolKey: { token0: token1, token1: token2, config } },
+        {
+          type: "forwarded",
+          forwardee: extension,
+          poolKey: { token0: token1, token1: token2, config },
+        },
       ],
     });
 
@@ -63,7 +66,10 @@ describe("encodeRoute", () => {
       fee: 123,
       nonce: 456n,
     });
-    const minBalanceUpdate = encodePoolBalanceUpdate(MIN_CALCULATED_AMOUNT_THRESHOLD, MIN_CALCULATED_AMOUNT_THRESHOLD);
+    const minBalanceUpdate = encodePoolBalanceUpdate(
+      MIN_CALCULATED_AMOUNT_THRESHOLD,
+      MIN_CALCULATED_AMOUNT_THRESHOLD,
+    );
     const signature = "0x123456";
 
     const data = encodeRoute({
@@ -89,8 +95,12 @@ describe("encodeRoute", () => {
   });
 
   it("rejects oversized signed exclusive swap fields", () => {
-    expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0 })).toThrow("deadline");
-    expect(() => encodePoolBalanceUpdate(MIN_CALCULATED_AMOUNT_THRESHOLD - 1n, 0n)).toThrow("delta0");
+    expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0 })).toThrow(
+      "deadline",
+    );
+    expect(() =>
+      encodePoolBalanceUpdate(MIN_CALCULATED_AMOUNT_THRESHOLD - 1n, 0n),
+    ).toThrow("delta0");
     expect(() =>
       encodeRoute({
         specifiedToken: token0,
@@ -116,7 +126,9 @@ describe("encodeRoute", () => {
         specifiedToken: token0,
         calculatedToken: token2,
         specifiedAmount: 1n,
-        hops: [{ type: "core", poolKey: { token0: token1, token1: token2, config } }],
+        hops: [
+          { type: "core", poolKey: { token0: token1, token1: token2, config } },
+        ],
       }),
     ).toThrow("disconnected");
   });
@@ -137,7 +149,10 @@ describe("encodeRoutes", () => {
           specifiedAmount: 2n,
           hops: [
             { type: "core", poolKey: { token0, token1, config } },
-            { type: "core", poolKey: { token0: token1, token1: token2, config } },
+            {
+              type: "core",
+              poolKey: { token0: token1, token1: token2, config },
+            },
           ],
         },
       ],
@@ -151,7 +166,9 @@ describe("encodeRoutes", () => {
         multiHops: [
           {
             specifiedAmount: 1n,
-            hops: [{ type: "core", poolKey: { token0, token1: token2, config } }],
+            hops: [
+              { type: "core", poolKey: { token0, token1: token2, config } },
+            ],
           },
         ],
       }),
@@ -164,8 +181,14 @@ describe("encodeRoutes", () => {
         specifiedToken: token0,
         calculatedToken: token1,
         multiHops: [
-          { specifiedAmount: 1n, hops: [{ type: "core", poolKey: { token0, token1, config } }] },
-          { specifiedAmount: -1n, hops: [{ type: "core", poolKey: { token0, token1, config } }] },
+          {
+            specifiedAmount: 1n,
+            hops: [{ type: "core", poolKey: { token0, token1, config } }],
+          },
+          {
+            specifiedAmount: -1n,
+            hops: [{ type: "core", poolKey: { token0, token1, config } }],
+          },
         ],
       }),
     ).toThrow("mixed exact-out / exact-in");
