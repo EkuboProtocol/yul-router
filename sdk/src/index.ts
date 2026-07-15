@@ -17,7 +17,8 @@ export const MIN_CALCULATED_AMOUNT_THRESHOLD = minInt128;
 export const MAX_CALCULATED_AMOUNT_THRESHOLD = maxInt128;
 export const MAX_MULTIHOP_LENGTH = 256;
 export const MAX_HOP_LENGTH = 256;
-export const YUL_ROUTER_ADDRESS: Address = "0x000000005fdB8E48978C5c804d406b76481674E8";
+export const YUL_ROUTER_ADDRESS: Address =
+  "0x00000000D542a1Afa7A01ECB16254F7A0F8ceB61";
 
 export interface PoolKey {
   token0: Address;
@@ -105,7 +106,9 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
   } = params;
 
   if (multiHops.length < 1 || multiHops.length > MAX_MULTIHOP_LENGTH) {
-    throw new Error(`multiHops length must be between 1 and ${MAX_MULTIHOP_LENGTH}`);
+    throw new Error(
+      `multiHops length must be between 1 and ${MAX_MULTIHOP_LENGTH}`,
+    );
   }
 
   const specified = getAddress(specifiedToken);
@@ -126,7 +129,9 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
     }
 
     if (hops.length < 1 || hops.length > MAX_HOP_LENGTH) {
-      throw new Error(`each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`);
+      throw new Error(
+        `each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`,
+      );
     }
 
     let currentToken = specified;
@@ -136,7 +141,9 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       switch (hop.type) {
         case "core": {
           const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
-          encodedHops.push(encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead));
+          encodedHops.push(
+            encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead),
+          );
           currentToken = nextToken;
           break;
         }
@@ -186,7 +193,13 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           } else {
             throw new Error("wrapper hop is disconnected");
           }
-          encodedHops.push(concatHex(["0x02", encodeAddress(underlying), encodeAddress(wrapped)]));
+          encodedHops.push(
+            concatHex([
+              "0x02",
+              encodeAddress(underlying),
+              encodeAddress(wrapped),
+            ]),
+          );
           break;
         }
       }
@@ -210,8 +223,14 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
     (isExactOut === true ? MIN_CALCULATED_AMOUNT_THRESHOLD : 0n);
   assertInt128(threshold, "calculatedAmountThreshold");
 
-  if (threshold !== 0n && isExactOut !== undefined && (threshold < 0n) !== isExactOut) {
-    throw new Error("calculatedAmountThreshold sign and specified amount signs have to match");
+  if (
+    threshold !== 0n &&
+    isExactOut !== undefined &&
+    threshold < 0n !== isExactOut
+  ) {
+    throw new Error(
+      "calculatedAmountThreshold sign and specified amount signs have to match",
+    );
   }
 
   const flags = recipient ? 1 : 0;
@@ -244,7 +263,12 @@ function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {
   throw new Error("pool hop is disconnected");
 }
 
-function encodeSwapHop(kind: "00", poolKey: PoolKey, sqrtRatioLimit?: bigint, skipAhead?: number): Hex {
+function encodeSwapHop(
+  kind: "00",
+  poolKey: PoolKey,
+  sqrtRatioLimit?: bigint,
+  skipAhead?: number,
+): Hex {
   return concatHex([
     `0x${kind}`,
     encodePoolKey(poolKey),
@@ -323,9 +347,12 @@ function encodeInt128(value: bigint): Hex {
 export function encodePoolBalanceUpdate(delta0: bigint, delta1: bigint): Hex {
   assertInt128(delta0, "delta0");
   assertInt128(delta1, "delta1");
-  return numberToHex((BigInt.asUintN(128, delta0) << 128n) | BigInt.asUintN(128, delta1), {
-    size: 32,
-  });
+  return numberToHex(
+    (BigInt.asUintN(128, delta0) << 128n) | BigInt.asUintN(128, delta1),
+    {
+      size: 32,
+    },
+  );
 }
 
 export interface EncodeSignedSwapMetaParameters {
@@ -335,8 +362,15 @@ export interface EncodeSignedSwapMetaParameters {
   nonce: bigint | number;
 }
 
-export function encodeSignedSwapMeta(params: EncodeSignedSwapMetaParameters): Hex {
-  const { authorizedLocker = "0x0000000000000000000000000000000000000000", deadline, fee = 0, nonce } = params;
+export function encodeSignedSwapMeta(
+  params: EncodeSignedSwapMetaParameters,
+): Hex {
+  const {
+    authorizedLocker = "0x0000000000000000000000000000000000000000",
+    deadline,
+    fee = 0,
+    nonce,
+  } = params;
 
   if (!Number.isInteger(deadline) || deadline < 0 || deadline > 0xffffffff) {
     throw new Error("deadline must fit into uint32");
@@ -350,7 +384,8 @@ export function encodeSignedSwapMeta(params: EncodeSignedSwapMetaParameters): He
     throw new Error("nonce must fit into uint64");
   }
 
-  const lockerLow128 = hexToBigInt(getAddress(authorizedLocker)) & ((1n << 128n) - 1n);
+  const lockerLow128 =
+    hexToBigInt(getAddress(authorizedLocker)) & ((1n << 128n) - 1n);
   const meta =
     (BigInt(deadline) << 224n) |
     (BigInt(fee) << 192n) |
