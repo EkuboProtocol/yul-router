@@ -5,9 +5,9 @@
   "hand_signed_exclusive_swap_hop": "95515",
   "hand_ve33_hop": "48840",
   "hand_wrapper_hop": "68364",
-  "sdk_core_hop": "63193",
-  "sdk_multi_multihop": "57292",
-  "sdk_signed_exclusive_swap_hop": "95515",
-  "sdk_ve33_hop": "48840",
-  "sdk_wrapper_hop": "61064"
+  "sdk_core_hop": "63261",
+  "sdk_multi_multihop": "57360",
+  "sdk_signed_exclusive_swap_hop": "95583",
+  "sdk_ve33_hop": "48908",
+  "sdk_wrapper_hop": "61132"
 }

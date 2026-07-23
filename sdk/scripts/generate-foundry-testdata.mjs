@@ -102,6 +102,7 @@ const cases = {
   core: encodeRoute({
     specifiedToken: TOKEN0,
     calculatedToken: TOKEN1,
+    calculatedAmountThreshold: 1n,
     recipient: RECIPIENT,
     specifiedAmount: SWAP_AMOUNT,
     hops: [{ type: "core", poolKey: pool01 }],
@@ -109,6 +110,7 @@ const cases = {
   wrapper: encodeRoute({
     specifiedToken: TOKEN0,
     calculatedToken: WRAPPED_TOKEN0,
+    calculatedAmountThreshold: 1n,
     recipient: RECIPIENT,
     specifiedAmount: SWAP_AMOUNT,
     hops: [{ type: "wrapper", underlying: TOKEN0, wrapped: WRAPPED_TOKEN0 }],
@@ -116,6 +118,7 @@ const cases = {
   ve33: encodeRoute({
     specifiedToken: TOKEN0,
     calculatedToken: TOKEN1,
+    calculatedAmountThreshold: 1n,
     recipient: RECIPIENT,
     specifiedAmount: SWAP_AMOUNT,
     hops: [{ type: "forwarded", forwardee: VE33, poolKey: ve33Pool }],
@@ -123,6 +126,7 @@ const cases = {
   signedExclusiveSwap: encodeRoute({
     specifiedToken: TOKEN0,
     calculatedToken: TOKEN1,
+    calculatedAmountThreshold: 1n,
     recipient: RECIPIENT,
     specifiedAmount: SWAP_AMOUNT,
     hops: [
@@ -139,6 +143,7 @@ const cases = {
   multiMultiHop: encodeRoutes({
     specifiedToken: TOKEN0,
     calculatedToken: TOKEN2,
+    calculatedAmountThreshold: 1n,
     recipient: RECIPIENT,
     multiHops: [
       {
