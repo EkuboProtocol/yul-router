@@ -71,6 +71,26 @@ test("default release configuration covers every supported deployment", async ()
   );
 });
 
+test("release publishing uses npm trusted publishing without a token", async () => {
+  const [workflow, packageJson] = await Promise.all([
+    readFile(
+      new URL("../../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../../sdk/package.json", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /environment: release/);
+  assert.match(workflow, /npm install --global npm@11\.18\.0/);
+  assert.match(workflow, /npm publish/);
+  assert.doesNotMatch(workflow, /NPM_TOKEN|NODE_AUTH_TOKEN/);
+  assert.equal(
+    JSON.parse(packageJson).repository.url,
+    "git+https://github.com/EkuboProtocol/yul-router.git",
+  );
+});
+
 test("deployment verification returns one shared router address", () => {
   const verified = verifyDeploymentRecords(
     ["eth-mainnet", "base-sepolia"],
@@ -182,6 +202,68 @@ test("release verification checks raw Foundry broadcasts before writing manifest
   await assert.rejects(
     verifyReleaseDeployments("0.5.0", { rootDir, networksFile }),
     /raw Foundry broadcast router does not match/,
+  );
+});
+
+test("SDK-only releases record preexisting routers without a raw broadcast", async (t) => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "yul-router-release-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+
+  const networksFile = path.join(rootDir, "networks.txt");
+  const releaseDir = path.join(
+    rootDir,
+    "broadcast",
+    "releases",
+    "v0.5.1",
+  );
+  await mkdir(releaseDir, { recursive: true });
+  await writeFile(networksFile, "eth-mainnet\nbase-mainnet\n");
+  await Promise.all([
+    writeFile(
+      path.join(releaseDir, "eth-mainnet.deployment.json"),
+      JSON.stringify(deployment("eth-mainnet", "1")),
+    ),
+    writeFile(
+      path.join(releaseDir, "base-mainnet.deployment.json"),
+      JSON.stringify(deployment("base-mainnet", "8453")),
+    ),
+  ]);
+
+  const manifest = await verifyReleaseDeployments("0.5.1", {
+    rootDir,
+    networksFile,
+  });
+
+  assert.equal(manifest.router, ROUTER);
+  assert.deepEqual(
+    manifest.deployments.map(
+      ({ network, deployedNow, foundryBroadcast, transactionHashes }) => ({
+        network,
+        deployedNow,
+        foundryBroadcast,
+        transactionHashes,
+      }),
+    ),
+    [
+      {
+        network: "eth-mainnet",
+        deployedNow: false,
+        foundryBroadcast: null,
+        transactionHashes: [],
+      },
+      {
+        network: "base-mainnet",
+        deployedNow: false,
+        foundryBroadcast: null,
+        transactionHashes: [],
+      },
+    ],
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(path.join(releaseDir, "manifest.json"), "utf8"),
+    ).router,
+    ROUTER,
   );
 });
 

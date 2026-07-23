@@ -1,6 +1,11 @@
 {
   "name": "@ekubo/yul-router-sdk",
   "version": "0.4.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EkuboProtocol/yul-router.git",
+    "directory": "sdk"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

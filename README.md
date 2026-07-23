@@ -77,8 +77,19 @@ Configure these secrets in the protected `release` GitHub environment:
 - `ALCHEMY_API_KEY`: an Alchemy API key enabled for every configured network.
 - `DEPLOYER_PRIVATE_KEY`: a deployment account funded with native gas on every
   configured network.
-- `NPM_TOKEN`: a granular npm token with read/write access to
-  `@ekubo/yul-router-sdk` and bypass 2FA enabled for non-interactive publishing.
+
+Configure npm trusted publishing for `@ekubo/yul-router-sdk` with:
+
+- provider: GitHub Actions
+- organization: `EkuboProtocol`
+- repository: `yul-router`
+- workflow filename: `release.yml`
+- environment: `release`
+- allowed action: `npm publish`
+
+The workflow uses GitHub OIDC to obtain a short-lived npm publishing credential,
+so no `NPM_TOKEN` secret is required. npm generates package provenance
+automatically for this trusted publication.
 
 The repository must also allow GitHub Actions to write repository contents, and
 the `main` branch rules must permit this release workflow to push its generated
