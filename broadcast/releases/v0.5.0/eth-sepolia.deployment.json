@@ -1,0 +1,14 @@
+{
+  "network": "eth-sepolia",
+  "chainId": "11155111",
+  "router": "0x00000000D542a1Afa7A01ECB16254F7A0F8ceB61",
+  "canonicalCore": "0x00000000000014aA86C5d3c41765bb24e11bd701",
+  "deterministicDeployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "broadcaster": "0x00000C771F6176268D5A9846E0956C3eF58597A1",
+  "runtimeCodeHash": "0x40107df879c9395f7a00b92d50f48a26bd1ba5ae169f5051b9747b1e77d12ff3",
+  "blockNumber": "11336560",
+  "verifiedAt": "2026-07-23T22:20:41Z",
+  "deployedNow": false,
+  "transactionHashes": [],
+  "foundryBroadcast": null
+}
