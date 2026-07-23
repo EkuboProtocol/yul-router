@@ -374,7 +374,7 @@ export interface EncodeSignedSwapMetaParameters {
   authorizedLocker?: Address;
   deadline: number;
   fee?: number;
-  nonce: bigint | number;
+  nonce: bigint;
 }
 
 export function encodeSignedSwapMeta(
@@ -394,8 +394,10 @@ export function encodeSignedSwapMeta(
     throw new Error("fee must fit into uint32");
   }
 
-  const nonceValue = BigInt(nonce);
-  if (nonceValue < 0n || nonceValue > (1n << 64n) - 1n) {
+  if (typeof nonce !== "bigint") {
+    throw new Error("nonce must be a bigint");
+  }
+  if (nonce < 0n || nonce > (1n << 64n) - 1n) {
     throw new Error("nonce must fit into uint64");
   }
 
@@ -404,7 +406,7 @@ export function encodeSignedSwapMeta(
   const meta =
     (BigInt(deadline) << 224n) |
     (BigInt(fee) << 192n) |
-    (nonceValue << 128n) |
+    (nonce << 128n) |
     lockerLow128;
 
   return numberToHex(meta, { size: 32 });

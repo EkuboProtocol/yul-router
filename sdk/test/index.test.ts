@@ -18,6 +18,36 @@ const extension = "0x3333333333333333333333333333333333333333";
 const config =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
 
+describe("encodeSignedSwapMeta", () => {
+  it("encodes uint64 bigint nonces above the safe integer range exactly", () => {
+    const nonce = 9_007_199_254_740_993n;
+    const meta = encodeSignedSwapMeta({ deadline: 0, nonce });
+    const decodedNonce = (BigInt(meta) >> 128n) & ((1n << 64n) - 1n);
+
+    expect(decodedNonce).toBe(nonce);
+  });
+
+  it("rejects numeric nonce inputs at runtime", () => {
+    const unsafeNumericNonce = Number(9_007_199_254_740_993n);
+
+    expect(() =>
+      encodeSignedSwapMeta({
+        deadline: 0,
+        nonce: unsafeNumericNonce as unknown as bigint,
+      }),
+    ).toThrow("nonce must be a bigint");
+  });
+
+  it("rejects bigint nonces outside uint64", () => {
+    expect(() =>
+      encodeSignedSwapMeta({ deadline: 0, nonce: -1n }),
+    ).toThrow("nonce must fit into uint64");
+    expect(() =>
+      encodeSignedSwapMeta({ deadline: 0, nonce: 1n << 64n }),
+    ).toThrow("nonce must fit into uint64");
+  });
+});
+
 describe("encodeRoute", () => {
   it("encodes a selectorless core multihop route with explicit tokens", () => {
     const data = encodeRoute({
@@ -161,7 +191,7 @@ describe("encodeRoute", () => {
   });
 
   it("rejects oversized signed exclusive swap fields", () => {
-    expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0 })).toThrow(
+    expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0n })).toThrow(
       "deadline",
     );
     expect(() =>
