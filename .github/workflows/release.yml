@@ -1,0 +1,198 @@
+name: Release SDK
+
+run-name: Release SDK v${{ inputs.version }} by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact semantic version without a leading v (for example, 0.5.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: yul-router-sdk-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Deploy and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: release
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Setup Node and npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate release inputs and secrets
+        env:
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          : "${ALCHEMY_API_KEY:?Add the ALCHEMY_API_KEY release secret}"
+          : "${DEPLOYER_PRIVATE_KEY:?Add the DEPLOYER_PRIVATE_KEY release secret}"
+          : "${NPM_TOKEN:?Add the NPM_TOKEN release secret}"
+          node script/release/prepare-package.mjs --check-version "$RELEASE_VERSION"
+
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+          if git rev-parse --verify --quiet "refs/tags/v${RELEASE_VERSION}"; then
+            echo "tag v${RELEASE_VERSION} already exists" >&2
+            exit 1
+          fi
+
+          current_version="$(jq -r .version sdk/package.json)"
+          if [[ "$current_version" == "$RELEASE_VERSION" ]]; then
+            echo "sdk/package.json is already at $RELEASE_VERSION" >&2
+            exit 1
+          fi
+
+          published_versions="$(npm view @ekubo/yul-router-sdk versions --json)"
+          if jq -e --arg version "$RELEASE_VERSION" \
+            'if type == "array" then index($version) != null else . == $version end' \
+            <<<"$published_versions" >/dev/null; then
+            echo "@ekubo/yul-router-sdk@$RELEASE_VERSION is already published" >&2
+            exit 1
+          fi
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: bun install --frozen-lockfile
+
+      - name: Test release helpers
+        run: |
+          bash -n script/release/deploy-router.sh
+          node --test script/release/release.test.mjs
+
+      - name: Build and test before deployment
+        run: |
+          bun --cwd sdk run build
+          bun --cwd sdk run test
+          forge build
+          forge test
+
+      - name: Deploy router to every configured chain
+        env:
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: script/release/deploy-router.sh "$RELEASE_VERSION"
+
+      - name: Verify deployment records
+        id: deployments
+        run: |
+          router_address="$(
+            node script/release/verify-deployments.mjs "$RELEASE_VERSION"
+          )"
+          echo "Verified router address: $router_address"
+          echo "router_address=$router_address" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deployment records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yul-router-broadcast-${{ github.run_id }}-${{ github.run_attempt }}
+          path: broadcast/
+          if-no-files-found: warn
+
+      - name: Prepare package version and router address
+        run: |
+          node script/release/prepare-package.mjs \
+            "$RELEASE_VERSION" \
+            "${{ steps.deployments.outputs.router_address }}"
+
+      - name: Build, test, and pack release package
+        id: package
+        working-directory: sdk
+        run: |
+          bun run build
+          bun run test
+          npm_pack_json="$(npm pack --json)"
+          package_tarball="$(jq -r '.[0].filename' <<<"$npm_pack_json")"
+          test -f "$package_tarball"
+          echo "package_tarball=$package_tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add sdk/package.json sdk/src/index.ts
+          git add -f broadcast/
+          git diff --cached --check
+          git diff --cached --exit-code --quiet && {
+            echo "release produced no commit changes" >&2
+            exit 1
+          }
+
+          git commit -m "release: @ekubo/yul-router-sdk v${RELEASE_VERSION}"
+          release_commit="$(git rev-parse HEAD)"
+          release_tag="v${RELEASE_VERSION}"
+          git tag -a "$release_tag" -m "@ekubo/yul-router-sdk v${RELEASE_VERSION}"
+          git push --atomic origin \
+            "HEAD:refs/heads/main" \
+            "refs/tags/${release_tag}:refs/tags/${release_tag}"
+
+          echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish package to npm
+        working-directory: sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish "${{ steps.package.outputs.package_tarball }}" \
+            --access public \
+            --provenance
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "Router: \`${{ steps.deployments.outputs.router_address }}\`"
+            echo
+            echo "Verified deployments:"
+            jq -r \
+              '.deployments[] | "- `\(.network)` (chain `\(.chainId)`)"' \
+              broadcast/deployments.json
+          } > "$notes_file"
+
+          gh release create "${{ steps.commit.outputs.release_tag }}" \
+            "sdk/${{ steps.package.outputs.package_tarball }}#@ekubo/yul-router-sdk v${RELEASE_VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --target "${{ steps.commit.outputs.release_commit }}" \
+            --title "@ekubo/yul-router-sdk v${RELEASE_VERSION}" \
+            --notes-file "$notes_file" \
+            --generate-notes
