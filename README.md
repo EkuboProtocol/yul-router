@@ -15,6 +15,12 @@ multi-hop has its own specified amount and sequence of hops, all starting from t
 the same `calculatedToken`. The router executes every multi-hop under one Core lock, aggregates the specified/calculated
 amounts, applies one slippage check, and settles once.
 
+Every route must provide `calculatedAmountThreshold`: a positive minimum output
+for exact-in or a negative maximum input for exact-out. Omitting it throws
+instead of encoding an unbounded slippage threshold. Passing the boolean
+`false` explicitly opts into the legacy unbounded threshold (`0n` for exact-in
+or the signed `int128` minimum for exact-out).
+
 The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment address.
 
 `encodeRoute(...)` remains as a convenience wrapper for a single multi-hop path.

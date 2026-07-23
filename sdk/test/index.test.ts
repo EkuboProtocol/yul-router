@@ -43,6 +43,7 @@ describe("encodeRoute", () => {
       specifiedToken: token0,
       calculatedToken: token1,
       specifiedAmount: 1n,
+      calculatedAmountThreshold: 1n,
       recipient: extension,
       hops: [
         { type: "wrapper", underlying: token0, wrapped: token2 },
@@ -76,6 +77,7 @@ describe("encodeRoute", () => {
       specifiedToken: token0,
       calculatedToken: token1,
       specifiedAmount: 1n,
+      calculatedAmountThreshold: 1n,
       hops: [
         {
           type: "signedExclusiveSwap",
@@ -94,6 +96,70 @@ describe("encodeRoute", () => {
     expect(data.endsWith("00000003123456")).toBe(true);
   });
 
+  it("requires a calculated amount threshold for exact-in routes", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        hops: [{ type: "core", poolKey: { token0, token1, config } }],
+      }),
+    ).toThrow("calculatedAmountThreshold is required");
+  });
+
+  it("requires a calculated amount threshold for exact-out routes", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: -1n,
+        hops: [{ type: "core", poolKey: { token0, token1, config } }],
+      }),
+    ).toThrow("calculatedAmountThreshold is required");
+  });
+
+  it("encodes an explicit maximum input for exact-out routes", () => {
+    const data = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: -1n,
+      calculatedAmountThreshold: -2n,
+      hops: [{ type: "core", poolKey: { token0, token1, config } }],
+    });
+
+    expect(data).toStartWith(
+      `0x0000${token0.slice(2)}${token1.slice(2)}fffffffffffffffffffffffffffffffe`,
+    );
+  });
+
+  it("allows an explicit legacy unbounded threshold for exact-in routes", () => {
+    const data = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [{ type: "core", poolKey: { token0, token1, config } }],
+    });
+
+    expect(data).toStartWith(
+      `0x0000${token0.slice(2)}${token1.slice(2)}00000000000000000000000000000000`,
+    );
+  });
+
+  it("allows an explicit legacy unbounded threshold for exact-out routes", () => {
+    const data = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: -1n,
+      calculatedAmountThreshold: false,
+      hops: [{ type: "core", poolKey: { token0, token1, config } }],
+    });
+
+    expect(data).toStartWith(
+      `0x0000${token0.slice(2)}${token1.slice(2)}80000000000000000000000000000000`,
+    );
+  });
+
   it("rejects oversized signed exclusive swap fields", () => {
     expect(() => encodeSignedSwapMeta({ deadline: -1, nonce: 0 })).toThrow(
       "deadline",
@@ -106,6 +172,7 @@ describe("encodeRoute", () => {
         specifiedToken: token0,
         calculatedToken: token1,
         specifiedAmount: 1n,
+        calculatedAmountThreshold: 1n,
         hops: [
           {
             type: "signedExclusiveSwap",
@@ -126,6 +193,7 @@ describe("encodeRoute", () => {
         specifiedToken: token0,
         calculatedToken: token2,
         specifiedAmount: 1n,
+        calculatedAmountThreshold: 1n,
         hops: [
           { type: "core", poolKey: { token0: token1, token1: token2, config } },
         ],
@@ -135,10 +203,26 @@ describe("encodeRoute", () => {
 });
 
 describe("encodeRoutes", () => {
+  it("rejects an omitted threshold for exact-in multi-hop routes", () => {
+    expect(() =>
+      encodeRoutes({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        multiHops: [
+          {
+            specifiedAmount: 1n,
+            hops: [{ type: "core", poolKey: { token0, token1, config } }],
+          },
+        ],
+      }),
+    ).toThrow("calculatedAmountThreshold is required");
+  });
+
   it("supports multiple independent multi-hop paths with a shared settlement token pair", () => {
     const data = encodeRoutes({
       specifiedToken: token0,
       calculatedToken: token2,
+      calculatedAmountThreshold: 1n,
       recipient: extension,
       multiHops: [
         {
@@ -163,6 +247,7 @@ describe("encodeRoutes", () => {
       generateCalldata({
         specifiedToken: token0,
         calculatedToken: token2,
+        calculatedAmountThreshold: 1n,
         multiHops: [
           {
             specifiedAmount: 1n,
@@ -180,6 +265,7 @@ describe("encodeRoutes", () => {
       encodeRoutes({
         specifiedToken: token0,
         calculatedToken: token1,
+        calculatedAmountThreshold: 1n,
         multiHops: [
           {
             specifiedAmount: 1n,
@@ -201,6 +287,7 @@ describe("encodeRoutes", () => {
       encodeRoutes({
         specifiedToken: token0,
         calculatedToken: token1,
+        calculatedAmountThreshold: 1n,
         multiHops: Array.from({ length: MAX_MULTIHOP_LENGTH }, () => ({
           specifiedAmount: 1n,
           hops: [hop],
@@ -216,6 +303,7 @@ describe("encodeRoutes", () => {
       encodeRoutes({
         specifiedToken: token0,
         calculatedToken: token0,
+        calculatedAmountThreshold: 1n,
         multiHops: [
           {
             specifiedAmount: 1n,
@@ -233,6 +321,7 @@ describe("encodeRoutes", () => {
       encodeRoutes({
         specifiedToken: token0,
         calculatedToken: token1,
+        calculatedAmountThreshold: 1n,
         multiHops: Array.from({ length: MAX_MULTIHOP_LENGTH + 1 }, () => ({
           specifiedAmount: 1n,
           hops: [hop],
@@ -244,6 +333,7 @@ describe("encodeRoutes", () => {
       encodeRoutes({
         specifiedToken: token0,
         calculatedToken: token1,
+        calculatedAmountThreshold: 1n,
         multiHops: [
           {
             specifiedAmount: 1n,

@@ -68,7 +68,11 @@ export interface MultiHop {
 export interface EncodeRoutesParameters {
   specifiedToken: Address;
   calculatedToken: Address;
-  calculatedAmountThreshold?: bigint;
+  /**
+   * Minimum output for exact-in routes or maximum input for exact-out routes.
+   * Pass false to explicitly use the legacy unbounded threshold.
+   */
+  calculatedAmountThreshold: bigint | false;
   recipient?: Address;
   multiHops: readonly MultiHop[];
 }
@@ -77,7 +81,11 @@ export interface EncodeRouteParameters {
   specifiedToken: Address;
   calculatedToken: Address;
   specifiedAmount: bigint;
-  calculatedAmountThreshold?: bigint;
+  /**
+   * Minimum output for exact-in routes or maximum input for exact-out routes.
+   * Pass false to explicitly use the legacy unbounded threshold.
+   */
+  calculatedAmountThreshold: bigint | false;
   recipient?: Address;
   hops: readonly Hop[];
 }
@@ -218,9 +226,16 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
     );
   }
 
+  if (calculatedAmountThreshold === undefined) {
+    throw new Error("calculatedAmountThreshold is required");
+  }
+
   const threshold =
-    calculatedAmountThreshold ??
-    (isExactOut === true ? MIN_CALCULATED_AMOUNT_THRESHOLD : 0n);
+    calculatedAmountThreshold === false
+      ? isExactOut === true
+        ? MIN_CALCULATED_AMOUNT_THRESHOLD
+        : 0n
+      : calculatedAmountThreshold;
   assertInt128(threshold, "calculatedAmountThreshold");
 
   if (
