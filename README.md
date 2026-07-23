@@ -21,6 +21,10 @@ instead of encoding an unbounded slippage threshold. Passing the boolean
 `false` explicitly opts into the legacy unbounded threshold (`0n` for exact-in
 or the signed `int128` minimum for exact-out).
 
+`encodeSignedSwapMeta(...)` requires its `nonce` as a `bigint`. JavaScript
+`number` values are rejected so uint64 nonces above the safe-integer range
+cannot be rounded before encoding.
+
 The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment address.
 
 `encodeRoute(...)` remains as a convenience wrapper for a single multi-hop path.
