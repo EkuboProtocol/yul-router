@@ -40,6 +40,12 @@ jobs:
         run: bun run test
         working-directory: yul-router/sdk
 
+      - name: Test release helpers
+        run: |
+          bash -n script/release/deploy-router.sh
+          node --test script/release/release.test.mjs
+        working-directory: yul-router
+
       - name: Build contracts and scripts
         run: forge build
         working-directory: yul-router

@@ -60,6 +60,42 @@ forge build
 SALT=0x0000000000000000000000000000000000000000000000000000000000000000 forge script script/DeployYulRouter.s.sol --rpc-url $RPC_URL --broadcast
 ```
 
+## SDK release
+
+The manually triggered `Release SDK` GitHub Actions workflow deploys the
+deterministic router, verifies every deployment, updates the SDK address and
+package version, commits the deployment records under `broadcast/`, publishes
+the package to npm, and creates a tagged GitHub release.
+
+The default networks are listed one per line in
+`script/release/alchemy-networks.txt`. To add an EVM chain, add its Alchemy RPC
+URL prefix identifier; for example, `opt-mainnet` resolves to
+`https://opt-mainnet.g.alchemy.com/v2/<ALCHEMY_API_KEY>`.
+
+Configure these secrets in the protected `release` GitHub environment:
+
+- `ALCHEMY_API_KEY`: an Alchemy API key enabled for every configured network.
+- `DEPLOYER_PRIVATE_KEY`: a deployment account funded with native gas on every
+  configured network.
+- `NPM_TOKEN`: a granular npm token with read/write access to
+  `@ekubo/yul-router-sdk` and bypass 2FA enabled for non-interactive publishing.
+
+The repository must also allow GitHub Actions to write repository contents, and
+the `main` branch rules must permit this release workflow to push its generated
+commit and annotated tag. Protect the `release` environment with the desired
+reviewers so deployment and publishing require approval.
+
+Run the workflow from `main` with an exact semantic version such as `0.5.0`.
+Before sending transactions it verifies that every network has the canonical
+Core and deterministic deployer. After all deployments,
+`script/release/verify-deployments.mjs` requires a fresh record for every
+configured network and verifies that all router addresses and runtime code
+hashes match. For a newly sent deployment it also checks the normalized record
+against the copied raw Foundry broadcast. For a router that was already
+deployed, it creates a fresh record from the script return value and current
+on-chain code rather than reusing a stale `run-latest.json`. Only the one
+address emitted by this all-chain verification is written to the SDK.
+
 ## Production quote integration
 
 CI requests live mainnet quotes from `https://prod-api-quoter.ekubo.org`, converts every split and hop to router

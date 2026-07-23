@@ -1,0 +1,10 @@
+# Add an EVM chain by adding its Alchemy RPC URL prefix identifier on a new line.
+# Each entry resolves to https://<identifier>.g.alchemy.com/v2/<ALCHEMY_API_KEY>.
+eth-mainnet
+eth-sepolia
+robinhood-mainnet
+robinhood-testnet
+base-mainnet
+base-sepolia
+arb-mainnet
+arb-sepolia
