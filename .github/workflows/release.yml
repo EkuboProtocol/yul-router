@@ -51,15 +51,16 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Validate release inputs and secrets
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.18.0
+
+      - name: Validate release inputs and deployment secrets
         env:
           ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
           DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           : "${ALCHEMY_API_KEY:?Add the ALCHEMY_API_KEY release secret}"
           : "${DEPLOYER_PRIVATE_KEY:?Add the DEPLOYER_PRIVATE_KEY release secret}"
-          : "${NPM_TOKEN:?Add the NPM_TOKEN release secret}"
           node script/release/prepare-package.mjs --check-version "$RELEASE_VERSION"
 
           git fetch origin main --tags
@@ -167,12 +168,9 @@ jobs:
 
       - name: Publish package to npm
         working-directory: sdk
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm publish "${{ steps.package.outputs.package_tarball }}" \
-            --access public \
-            --provenance
+            --access public
 
       - name: Create GitHub release
         env:
