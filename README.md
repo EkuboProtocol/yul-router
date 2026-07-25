@@ -2,18 +2,25 @@
 
 Gas-focused Yul router for Ekubo EVM swaps.
 
-The router deliberately carries token addresses, pool configs, extension forwardee addresses, and token wrapper addresses in calldata. It does not use token or extension jump tables, does not expose fee claiming, rejects Core `forward` calls to itself, and rejects delegatecall execution by checking an immutable self address appended at deployment.
+The router deliberately carries token addresses, pool configs, extension forwardee addresses, and token wrapper addresses in calldata. It does not use token or extension jump tables, does not expose fee claiming, and rejects delegatecall execution by checking an immutable self address appended at deployment.
 
 ## Calldata
 
 The SDK emits custom packed calldata directly, without a public router selector. Non-Core calls are interpreted as route
 data. Calls from Ekubo Core are reserved for the lock callback selector `0x00000000` and forward callback selector
-`0x00000001`; the forward callback always reverts.
+`0x00000001`.
 
 The primary SDK surface is `encodeRoutes(...)` / `generateCalldata(...)`, which accepts `multiHops: MultiHop[]`. Each
 multi-hop has its own specified amount and sequence of hops, all starting from the same `specifiedToken` and ending at
 the same `calculatedToken`. The router executes every multi-hop under one Core lock, aggregates the specified/calculated
 amounts, applies one slippage check, and settles once.
+
+The same route data can be passed through `Core.forward(router, routeData)` by an existing locker. In this mode the
+router executes the route and applies its slippage check, but deliberately does not settle. It returns
+`(address specifiedToken, address calculatedToken, int256 specifiedDelta, int256 calculatedDelta)`, where the two signed
+deltas are the debt changes left on the shared lock. This lets a caller combine a routed swap with another atomic
+operation, such as adding liquidity, before settling the net result. Any recipient encoded in the route is ignored in
+forwarded mode because the original locker owns settlement.
 
 Every route must provide `calculatedAmountThreshold`: a positive minimum output
 for exact-in or a negative maximum input for exact-out. Omitting it throws
@@ -39,7 +46,6 @@ Supported hop types:
 Not supported by design:
 
 - delegatecall routing
-- routing through `Core.forward(router, ...)`
 - protocol or integration fee collection
 
 Constructor argument:

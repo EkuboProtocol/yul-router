@@ -10,6 +10,7 @@ import {ICore} from "ekubo/interfaces/ICore.sol";
 import {IFlashAccountant} from "ekubo/interfaces/IFlashAccountant.sol";
 import {ISignedExclusiveSwap} from "ekubo/interfaces/extensions/ISignedExclusiveSwap.sol";
 import {CoreLib} from "ekubo/libraries/CoreLib.sol";
+import {FlashAccountantLib} from "ekubo/libraries/FlashAccountantLib.sol";
 import {SignedExclusiveSwapLib} from "ekubo/libraries/SignedExclusiveSwapLib.sol";
 import {Bitmap} from "ekubo/types/bitmap.sol";
 import {ControllerAddress} from "ekubo/types/controllerAddress.sol";
@@ -107,10 +108,10 @@ contract DebtForwardee {
 
 contract YulRouterTest is Test {
     using CoreLib for ICore;
+    using FlashAccountantLib for ICore;
     using SignedExclusiveSwapLib for *;
 
     error DelegateCall();
-    error ForwardNotAllowed();
     error InvalidCaller();
     error InvalidRoute();
     error SlippageCheckFailed(int256);
@@ -138,6 +139,11 @@ contract YulRouterTest is Test {
     SignedExclusiveSwap private signedExclusiveSwap;
     address private router;
     address private forwardTarget;
+    bytes private forwardData;
+    address private forwardSpecifiedToken;
+    address private forwardCalculatedToken;
+    int256 private forwardSpecifiedDelta;
+    int256 private forwardCalculatedDelta;
     uint256 private controllerPk;
     ControllerAddress private controller;
 
@@ -378,11 +384,76 @@ contract YulRouterTest is Test {
         caller.delegate(router, _encodeOneHopRoute(address(this)));
     }
 
-    function testRevert_ForwardNotAllowed() external {
+    function test_ForwardedRouteReturnsDebtsToOriginalLocker() external {
         forwardTarget = router;
+        forwardData = _encodeOneHopRoute(makeAddr("ignored recipient"));
 
-        vm.expectRevert(ForwardNotAllowed.selector);
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
         CORE.lock();
+
+        assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
+        assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
+        assertEq(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta");
+        assertLt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
+        assertEq(
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+        );
+        assertEq(IERC20(TOKEN0).allowance(address(this), router), 0, "router allowance");
+    }
+
+    function test_ForwardedExactOutRouteReturnsSignedDebts() external {
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithAmounts(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(0)),
+            address(0),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            -int128(POSITION_AMOUNT),
+            -int128(SWAP_AMOUNT)
+        );
+
+        deal(TOKEN1, address(this), POSITION_AMOUNT);
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        CORE.lock();
+
+        assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
+        assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
+        assertEq(forwardSpecifiedDelta, -int256(uint256(SWAP_AMOUNT)), "specified delta");
+        assertGt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(IERC20(TOKEN0).balanceOf(address(this)) - token0Before, SWAP_AMOUNT, "token0 received");
+        assertEq(
+            token1Before - IERC20(TOKEN1).balanceOf(address(this)), uint256(forwardCalculatedDelta), "token1 spent"
+        );
+    }
+
+    function test_ForwardedRouteCanUseNestedVe33Forward() external {
+        PoolKey memory key = _ve33PoolKey();
+        _initializeAndSeed(key);
+        forwardTarget = router;
+        forwardData = _encodeVe33Route(makeAddr("ignored recipient"));
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        CORE.lock();
+
+        assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
+        assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
+        assertEq(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta");
+        assertLt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
+        assertEq(
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+        );
     }
 
     function testRevert_NoClaimIntegrationFeesSurface() external {
@@ -570,7 +641,20 @@ contract YulRouterTest is Test {
     }
 
     function locked_6416899205(uint256) external {
-        CORE.forward(forwardTarget);
+        bytes memory result = CORE.forward(forwardTarget, forwardData);
+        (forwardSpecifiedToken, forwardCalculatedToken, forwardSpecifiedDelta, forwardCalculatedDelta) =
+            abi.decode(result, (address, address, int256, int256));
+
+        _settleForwardDelta(forwardSpecifiedToken, forwardSpecifiedDelta);
+        _settleForwardDelta(forwardCalculatedToken, forwardCalculatedDelta);
+    }
+
+    function _settleForwardDelta(address token, int256 delta) private {
+        if (delta > 0) {
+            CORE.pay(token, uint256(delta));
+        } else if (delta < 0) {
+            CORE.withdraw(token, address(this), uint128(uint256(-delta)));
+        }
     }
 
     function _deployRouter() private returns (address deployed) {
