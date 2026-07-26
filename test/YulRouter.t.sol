@@ -12,6 +12,7 @@ import {ISignedExclusiveSwap} from "ekubo/interfaces/extensions/ISignedExclusive
 import {CoreLib} from "ekubo/libraries/CoreLib.sol";
 import {FlashAccountantLib} from "ekubo/libraries/FlashAccountantLib.sol";
 import {SignedExclusiveSwapLib} from "ekubo/libraries/SignedExclusiveSwapLib.sol";
+import {tickToSqrtRatio} from "ekubo/math/ticks.sol";
 import {Bitmap} from "ekubo/types/bitmap.sol";
 import {ControllerAddress} from "ekubo/types/controllerAddress.sol";
 import {Locker} from "ekubo/types/locker.sol";
@@ -19,7 +20,9 @@ import {PoolBalanceUpdate} from "ekubo/types/poolBalanceUpdate.sol";
 import {PoolConfig} from "ekubo/types/poolConfig.sol";
 import {PoolId} from "ekubo/types/poolId.sol";
 import {PoolKey} from "ekubo/types/poolKey.sol";
+import {PoolState} from "ekubo/types/poolState.sol";
 import {SignedSwapMeta, createSignedSwapMeta} from "ekubo/types/signedSwapMeta.sol";
+import {SqrtRatio} from "ekubo/types/sqrtRatio.sol";
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
@@ -114,6 +117,7 @@ contract YulRouterTest is Test {
     error DelegateCall();
     error InvalidCaller();
     error InvalidRoute();
+    error PartialSwapsDisallowed();
     error SlippageCheckFailed(int256);
 
     address payable private constant CORE_ADDRESS = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
@@ -403,6 +407,181 @@ contract YulRouterTest is Test {
             IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
         );
         assertEq(IERC20(TOKEN0).allowance(address(this), router), 0, "router allowance");
+    }
+
+    function test_ForwardedPartialRouteMovesEmptyPoolToLimitWithoutDebt() external {
+        PoolKey memory key = _poolKey(TOKEN0, TOKEN2);
+        positions.maybeInitializePool(key, 0);
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-100);
+
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(0)),
+            address(0),
+            key,
+            TOKEN0,
+            TOKEN2,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            targetSqrtRatio,
+            true
+        );
+
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token2Before = IERC20(TOKEN2).balanceOf(address(this));
+
+        CORE.lock();
+
+        assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
+        assertEq(forwardCalculatedToken, TOKEN2, "calculated token");
+        assertEq(forwardSpecifiedDelta, 0, "specified delta");
+        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        assertEq(IERC20(TOKEN0).balanceOf(address(this)), token0Before, "token0 balance");
+        assertEq(IERC20(TOKEN2).balanceOf(address(this)), token2Before, "token2 balance");
+
+        (SqrtRatio sqrtRatio,, uint128 liquidity) = CORE.poolState(key.toPoolId()).parse();
+        assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
+        assertEq(liquidity, 0, "liquidity");
+    }
+
+    function test_ForwardedPartialRouteMovesEmptyVe33PoolToLimitWithoutDebt() external {
+        PoolKey memory key = _ve33PoolKey();
+        positions.maybeInitializePool(key, 0);
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-100);
+
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(1)),
+            VE33,
+            key,
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            targetSqrtRatio,
+            true
+        );
+
+        CORE.lock();
+
+        assertEq(forwardSpecifiedDelta, 0, "specified delta");
+        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        (SqrtRatio sqrtRatio,, uint128 liquidity) = CORE.poolState(key.toPoolId()).parse();
+        assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
+        assertEq(liquidity, 0, "liquidity");
+    }
+
+    function test_ForwardedPartialRouteReportsActualDebtsAtPriceLimit() external {
+        PoolKey memory key = _poolKey();
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-1);
+
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(0)),
+            address(0),
+            key,
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            targetSqrtRatio,
+            true
+        );
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        CORE.lock();
+
+        assertGt(forwardSpecifiedDelta, 0, "specified delta");
+        assertLt(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta below maximum");
+        assertLt(forwardCalculatedDelta, 0, "calculated delta");
+        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), uint256(forwardSpecifiedDelta), "token0 spent");
+        assertEq(
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+        );
+
+        (SqrtRatio sqrtRatio,,) = CORE.poolState(key.toPoolId()).parse();
+        assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
+    }
+
+    function testRevert_EmptyPoolSwapDisallowsPartialByDefault() external {
+        PoolKey memory key = _poolKey(TOKEN0, TOKEN2);
+        positions.maybeInitializePool(key, 0);
+
+        bytes memory data = _encodeSwapRouteWithParameters(
+            address(this),
+            bytes1(uint8(0)),
+            address(0),
+            key,
+            TOKEN0,
+            TOKEN2,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            tickToSqrtRatio(-100),
+            false
+        );
+
+        _assertRouterReverts(data, PartialSwapsDisallowed.selector);
+    }
+
+    function testRevert_PartialSwapMustBeExactInput() external {
+        bytes memory data = _encodeSwapRouteWithParameters(
+            address(this),
+            bytes1(uint8(0)),
+            address(0),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            -int128(POSITION_AMOUNT),
+            -int128(SWAP_AMOUNT),
+            SqrtRatio.wrap(0),
+            true
+        );
+
+        _assertRouterReverts(data, InvalidRoute.selector);
+    }
+
+    function testRevert_PartialSwapMustBeSingleHop() external {
+        PoolKey memory key12 = _poolKey(TOKEN1, TOKEN2);
+        _initializeAndSeed(key12);
+        bytes memory data = bytes.concat(
+            bytes1(uint8(1)), // has recipient
+            bytes1(uint8(0)), // one multi-hop
+            bytes20(TOKEN0),
+            bytes20(TOKEN2),
+            bytes16(uint128(0)),
+            bytes20(address(this)),
+            bytes16(SWAP_AMOUNT),
+            bytes1(uint8(1)), // two hops
+            _encodeSwapHop(bytes1(uint8(0)), address(0), _poolKey(), SqrtRatio.wrap(0), true),
+            _encodeSwapHop(bytes1(uint8(0)), address(0), key12)
+        );
+
+        _assertRouterReverts(data, InvalidRoute.selector);
+    }
+
+    function testRevert_PartialSwapCannotSpendMoreThanSpecified() external {
+        DebtForwardee forwardee = new DebtForwardee(CORE, TOKEN2, SWAP_AMOUNT * 2, 1);
+        bytes memory data = _encodeSwapRouteWithParameters(
+            address(this),
+            bytes1(uint8(1)),
+            address(forwardee),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            SqrtRatio.wrap(0),
+            true
+        );
+        deal(TOKEN2, CORE_ADDRESS, 1);
+
+        _assertRouterReverts(data, PartialSwapsDisallowed.selector);
     }
 
     function test_ForwardedExactOutRouteReturnsSignedDebts() external {
@@ -810,6 +989,32 @@ contract YulRouterTest is Test {
         int128 threshold,
         int128 specifiedAmount
     ) private pure returns (bytes memory) {
+        return _encodeSwapRouteWithParameters(
+            recipient,
+            hopType,
+            forwardee,
+            key,
+            specifiedToken,
+            calculatedToken,
+            threshold,
+            specifiedAmount,
+            SqrtRatio.wrap(0),
+            false
+        );
+    }
+
+    function _encodeSwapRouteWithParameters(
+        address recipient,
+        bytes1 hopType,
+        address forwardee,
+        PoolKey memory key,
+        address specifiedToken,
+        address calculatedToken,
+        int128 threshold,
+        int128 specifiedAmount,
+        SqrtRatio sqrtRatioLimit,
+        bool allowPartial
+    ) private pure returns (bytes memory) {
         return bytes.concat(
             bytes1(uint8(1)), // has recipient
             bytes1(uint8(0)), // one multi-hop
@@ -819,7 +1024,7 @@ contract YulRouterTest is Test {
             bytes20(recipient),
             bytes16(_encodeInt128(specifiedAmount)),
             bytes1(uint8(0)), // one hop
-            _encodeSwapHop(hopType, forwardee, key)
+            _encodeSwapHop(hopType, forwardee, key, sqrtRatioLimit, allowPartial)
         );
     }
 
@@ -854,7 +1059,18 @@ contract YulRouterTest is Test {
     }
 
     function _encodeSwapHop(bytes1 hopType, address forwardee, PoolKey memory key) private pure returns (bytes memory) {
+        return _encodeSwapHop(hopType, forwardee, key, SqrtRatio.wrap(0), false);
+    }
+
+    function _encodeSwapHop(
+        bytes1 hopType,
+        address forwardee,
+        PoolKey memory key,
+        SqrtRatio sqrtRatioLimit,
+        bool allowPartial
+    ) private pure returns (bytes memory) {
         bytes memory forwardeePart = hopType == bytes1(uint8(1)) ? abi.encodePacked(bytes20(forwardee)) : bytes("");
+        uint32 swapControl = allowPartial ? uint32(1 << 31) : uint32(0);
 
         return bytes.concat(
             hopType,
@@ -862,8 +1078,8 @@ contract YulRouterTest is Test {
             bytes20(key.token0),
             bytes20(key.token1),
             bytes32(PoolConfig.unwrap(key.config)),
-            bytes12(uint96(0)), // default sqrt ratio limit
-            bytes4(uint32(0))
+            bytes12(SqrtRatio.unwrap(sqrtRatioLimit)),
+            bytes4(swapControl)
         );
     }
 

@@ -31,6 +31,11 @@ export interface CoreHop {
   poolKey: PoolKey;
   sqrtRatioLimit?: bigint;
   skipAhead?: number;
+  /**
+   * Accept a partial fill and account for the amount actually swapped.
+   * Only valid for single-hop exact-input paths.
+   */
+  allowPartial?: boolean;
 }
 
 export interface ForwardedHop {
@@ -39,6 +44,11 @@ export interface ForwardedHop {
   poolKey: PoolKey;
   sqrtRatioLimit?: bigint;
   skipAhead?: number;
+  /**
+   * Accept a partial fill and account for the amount actually swapped.
+   * Only valid for single-hop exact-input paths.
+   */
+  allowPartial?: boolean;
 }
 
 export interface SignedExclusiveSwapHop {
@@ -142,6 +152,16 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       );
     }
 
+    const partialHop = hops.find(
+      (hop) =>
+        (hop.type === "core" || hop.type === "forwarded") && hop.allowPartial,
+    );
+    if (partialHop && (hops.length !== 1 || specifiedAmount <= 0n)) {
+      throw new Error(
+        "allowPartial is only valid for single-hop exact-input paths",
+      );
+    }
+
     let currentToken = specified;
     const encodedHops: Hex[] = [];
 
@@ -150,7 +170,13 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
         case "core": {
           const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
           encodedHops.push(
-            encodeSwapHop("00", hop.poolKey, hop.sqrtRatioLimit, hop.skipAhead),
+            encodeSwapHop(
+              "00",
+              hop.poolKey,
+              hop.sqrtRatioLimit,
+              hop.skipAhead,
+              hop.allowPartial,
+            ),
           );
           currentToken = nextToken;
           break;
@@ -164,7 +190,7 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
               encodeAddress(forwardee),
               encodePoolKey(poolKey),
               encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-              encodeSkipAhead(hop.skipAhead),
+              encodeSwapControl(hop.skipAhead, hop.allowPartial),
             ]),
           );
           currentToken = nextToken;
@@ -179,7 +205,7 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
               encodeAddress(forwardee),
               encodePoolKey(poolKey),
               encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-              encodeSkipAhead(hop.skipAhead),
+              encodeSwapControl(hop.skipAhead),
               encodeUint256(hop.meta, "meta"),
               encodeBytes32(hop.minBalanceUpdate, "minBalanceUpdate"),
               encodeSignature(hop.signature),
@@ -283,12 +309,13 @@ function encodeSwapHop(
   poolKey: PoolKey,
   sqrtRatioLimit?: bigint,
   skipAhead?: number,
+  allowPartial?: boolean,
 ): Hex {
   return concatHex([
     `0x${kind}`,
     encodePoolKey(poolKey),
     encodeSqrtRatioLimit(sqrtRatioLimit),
-    encodeSkipAhead(skipAhead),
+    encodeSwapControl(skipAhead, allowPartial),
   ]);
 }
 
@@ -341,11 +368,13 @@ function encodeSqrtRatioLimit(value: bigint | undefined): Hex {
   return numberToHex(value, { size: 12 });
 }
 
-function encodeSkipAhead(skipAhead = 0): Hex {
+function encodeSwapControl(skipAhead = 0, allowPartial = false): Hex {
   if (!Number.isInteger(skipAhead) || skipAhead < 0 || skipAhead > 0x7fffffff) {
     throw new Error("skipAhead must fit into uint31");
   }
-  return numberToHex(skipAhead, { size: 4 });
+  const encoded =
+    BigInt(skipAhead) | (allowPartial ? 0x80000000n : 0n);
+  return numberToHex(encoded, { size: 4 });
 }
 
 function assertInt128(value: bigint, name: string) {

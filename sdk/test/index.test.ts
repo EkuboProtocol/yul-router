@@ -90,6 +90,78 @@ describe("encodeRoute", () => {
     expect(data).toContain("01");
   });
 
+  it("encodes opt-in partial fills in the swap control word", () => {
+    const coreData = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "core",
+          poolKey: { token0, token1, config },
+          skipAhead: 3,
+          allowPartial: true,
+        },
+      ],
+    });
+    const forwardedData = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "forwarded",
+          forwardee: extension,
+          poolKey: { token0, token1, config },
+          allowPartial: true,
+        },
+      ],
+    });
+
+    expect(coreData.endsWith("80000003")).toBe(true);
+    expect(forwardedData.endsWith("80000000")).toBe(true);
+  });
+
+  it("restricts partial fills to single-hop exact-input paths", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: -1n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+        ],
+      }),
+    ).toThrow("single-hop exact-input");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token2,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+          {
+            type: "core",
+            poolKey: { token0: token1, token1: token2, config },
+          },
+        ],
+      }),
+    ).toThrow("single-hop exact-input");
+  });
+
   it("encodes signed exclusive swap hops with signed payload fields", () => {
     const meta = encodeSignedSwapMeta({
       authorizedLocker: extension,

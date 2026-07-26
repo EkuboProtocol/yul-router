@@ -28,6 +28,17 @@ instead of encoding an unbounded slippage threshold. Passing the boolean
 `false` explicitly opts into the legacy unbounded threshold (`0n` for exact-in
 or the signed `int128` minimum for exact-out).
 
+Core and forwarded swap hops accept an optional `allowPartial` flag for
+target-price execution.
+When enabled, the router accounts for the amount actually swapped instead of
+requiring the specified amount to be fully consumed. It is intentionally
+limited to single-hop exact-input paths, so a partial fill cannot strand debt
+in an intermediate token. Other independent paths may still be included in the
+same aggregated route. This also lets a swap move an initialized pool with no
+liquidity to its `sqrtRatioLimit`: Core returns zero token deltas, and a
+forwarded route reports zero endpoint debts for the caller to combine with a
+subsequent liquidity deposit.
+
 `encodeSignedSwapMeta(...)` requires its `nonce` as a `bigint`. JavaScript
 `number` values are rejected so uint64 nonces above the safe-integer range
 cannot be rounded before encoding.
