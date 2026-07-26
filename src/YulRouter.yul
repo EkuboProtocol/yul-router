@@ -407,6 +407,9 @@ object "YulRouter" {
                     returndatacopy(0x60, 0, returndatasize())
                     revert(0x60, returndatasize())
                 }
+                if lt(returndatasize(), 32) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
 
                 update := mload(0x60)
             }
@@ -449,6 +452,9 @@ object "YulRouter" {
                 if iszero(call(gas(), coreAddress, 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
                     returndatacopy(ptr, 0, returndatasize())
                     revert(ptr, returndatasize())
+                }
+                if lt(returndatasize(), 32) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
                 update := mload(ptr)

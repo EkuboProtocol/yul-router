@@ -40,7 +40,11 @@ export interface CoreHop {
 
 export interface ForwardedHop {
   type: "forwarded";
-  forwardee: Address;
+  /**
+   * Core forward target. Defaults to the extension encoded in poolKey.config.
+   * Set this when routing through an adapter instead of the pool extension.
+   */
+  forwardee?: Address;
   poolKey: PoolKey;
   sqrtRatioLimit?: bigint;
   skipAhead?: number;
@@ -53,7 +57,10 @@ export interface ForwardedHop {
 
 export interface SignedExclusiveSwapHop {
   type: "signedExclusiveSwap";
-  forwardee: Address;
+  /**
+   * Core forward target. Defaults to the extension encoded in poolKey.config.
+   */
+  forwardee?: Address;
   poolKey: PoolKey;
   meta: bigint | Hex;
   minBalanceUpdate: Hex;
@@ -182,7 +189,8 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           break;
         }
         case "forwarded": {
-          const { poolKey, forwardee } = hop;
+          const { poolKey } = hop;
+          const forwardee = resolveForwardee(poolKey, hop.forwardee);
           const { nextToken } = resolvePoolHop(currentToken, poolKey);
           encodedHops.push(
             concatHex([
@@ -197,7 +205,8 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
           break;
         }
         case "signedExclusiveSwap": {
-          const { poolKey, forwardee } = hop;
+          const { poolKey } = hop;
+          const forwardee = resolveForwardee(poolKey, hop.forwardee);
           const { nextToken } = resolvePoolHop(currentToken, poolKey);
           encodedHops.push(
             concatHex([
@@ -302,6 +311,22 @@ function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {
   }
 
   throw new Error("pool hop is disconnected");
+}
+
+function resolveForwardee(
+  poolKey: PoolKey,
+  forwardee: Address | undefined,
+): Address {
+  const resolved =
+    forwardee === undefined
+      ? getAddress(`0x${padHex(poolKey.config, { size: 32 }).slice(2, 42)}`)
+      : getAddress(forwardee);
+  if (hexToBigInt(resolved) === 0n) {
+    throw new Error(
+      "forwarded hop needs a forwardee or a nonzero pool extension",
+    );
+  }
+  return resolved;
 }
 
 function encodeSwapHop(

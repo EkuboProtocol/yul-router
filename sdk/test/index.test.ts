@@ -17,6 +17,8 @@ const token2 = "0x2222222222222222222222222222222222222222";
 const extension = "0x3333333333333333333333333333333333333333";
 const config =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
+const extensionConfig =
+  "0x3333333333333333333333333333333333333333000000000000000000000000";
 
 describe("encodeSignedSwapMeta", () => {
   it("encodes uint64 bigint nonces above the safe integer range exactly", () => {
@@ -124,6 +126,56 @@ describe("encodeRoute", () => {
     expect(forwardedData.endsWith("80000000")).toBe(true);
   });
 
+  it("defaults forwarded hops to the pool extension", () => {
+    const parameters = {
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "forwarded",
+          poolKey: { token0, token1, config: extensionConfig },
+        },
+      ],
+    } as const;
+    const inferred = encodeRoute(parameters);
+    const explicit = encodeRoute({
+      ...parameters,
+      hops: [{ ...parameters.hops[0], forwardee: extension }],
+    });
+
+    expect(inferred).toBe(explicit);
+  });
+
+  it("requires a nonzero forward target", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [{ type: "forwarded", poolKey: { token0, token1, config } }],
+      }),
+    ).toThrow("forwardee or a nonzero pool extension");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "forwarded",
+            forwardee: "0x0000000000000000000000000000000000000000",
+            poolKey: { token0, token1, config: extensionConfig },
+          },
+        ],
+      }),
+    ).toThrow("forwardee or a nonzero pool extension");
+  });
+
   it("restricts partial fills to single-hop exact-input paths", () => {
     expect(() =>
       encodeRoute({
@@ -183,8 +235,7 @@ describe("encodeRoute", () => {
       hops: [
         {
           type: "signedExclusiveSwap",
-          forwardee: extension,
-          poolKey: { token0, token1, config },
+          poolKey: { token0, token1, config: extensionConfig },
           meta,
           minBalanceUpdate,
           signature,

@@ -49,8 +49,12 @@ The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment add
 
 Supported hop types:
 
-- `core`: direct `Core.swap_6269342730()` using the provided pool key.
-- `forwarded`: `Core.forward(forwardee, abi.encode(poolKey, params))` for forward-only swap extensions such as MEV Capture and Ve33.
+- `core`: direct `Core.swap_6269342730()` using the provided pool key. This works for arbitrary pools whose extension
+  permits the normal Core swap path; Core dispatches the pool's configured hooks.
+- `forwarded`: `Core.forward(forwardee, abi.encode(poolKey, params))` for arbitrary forward-only swap implementations
+  that use the standard payload and return a `PoolBalanceUpdate` as their first ABI word. The forwardee address is
+  carried in each hop rather than hard-coded in the router; current examples include MEV Capture and Ve33. The SDK
+  defaults `forwardee` to the extension encoded in `poolKey.config` and allows overriding it to use an adapter.
 - `signedExclusiveSwap`: `Core.forward(forwardee, abi.encode(poolKey, params, meta, minBalanceUpdate, signature))` for SignedExclusiveSwap pools.
 - `wrapper`: `Core.forward(wrapper, abi.encode(int256 amount))` for Ekubo token wrappers.
 

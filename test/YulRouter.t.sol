@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Core} from "ekubo/Core.sol";
 import {Positions} from "ekubo/Positions.sol";
 import {TokenWrapper} from "ekubo/TokenWrapper.sol";
+import {MEVCapture, mevCaptureCallPoints} from "ekubo/extensions/MEVCapture.sol";
 import {SignedExclusiveSwap} from "ekubo/extensions/SignedExclusiveSwap.sol";
 import {Ve33} from "ekubo/extensions/Ve33.sol";
 import {ICore} from "ekubo/interfaces/ICore.sol";
@@ -67,6 +68,10 @@ contract SwapForwardee {
 
         return abi.decode(returndata, (bytes32));
     }
+}
+
+contract EmptyForwardee {
+    function forwarded_2374103877(Locker) external {}
 }
 
 contract DebtForwardee {
@@ -140,6 +145,7 @@ contract YulRouterTest is Test {
     ICore private constant CORE = ICore(CORE_ADDRESS);
 
     Positions private positions;
+    MEVCapture private mevCapture;
     SignedExclusiveSwap private signedExclusiveSwap;
     address private router;
     address private forwardTarget;
@@ -161,6 +167,8 @@ contract YulRouterTest is Test {
 
     function setUp() public {
         deployCodeTo("Core.sol:Core", CORE_ADDRESS);
+        address mevCaptureAddress = address((uint160(mevCaptureCallPoints().toUint8()) << 152) | 1);
+        deployCodeTo("MEVCapture.sol", abi.encode(CORE), mevCaptureAddress);
         deployCodeTo("Ve33.sol:Ve33", abi.encode(CORE_ADDRESS, TOKEN0), VE33);
         deployCodeTo(
             "SignedExclusiveSwap.sol:SignedExclusiveSwap", abi.encode(CORE, address(this)), SIGNED_EXCLUSIVE_SWAP
@@ -171,6 +179,7 @@ contract YulRouterTest is Test {
         deployCodeTo("YulRouter.t.sol:TestToken", TOKEN2);
 
         positions = new Positions(CORE, address(this), 0, 1);
+        mevCapture = MEVCapture(mevCaptureAddress);
         router = _deployRouter();
         signedExclusiveSwap = SignedExclusiveSwap(SIGNED_EXCLUSIVE_SWAP);
         controllerPk = _controllerPk();
@@ -241,6 +250,34 @@ contract YulRouterTest is Test {
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
     }
 
+    function test_SwapExactInMEVCaptureForwardedHop() external {
+        PoolKey memory key = _mevCapturePoolKey();
+        _initializeAndSeed(key);
+
+        bytes memory data = _encodeSwapRoute(address(this), bytes1(uint8(1)), address(mevCapture), key);
+
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        (bool success, bytes memory returndata) = router.call(data);
+        assertTrue(success, "router call");
+
+        int256 calculatedAmount = abi.decode(returndata, (int256));
+        assertGt(calculatedAmount, int256(0), "calculated amount");
+        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
+        assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
+    }
+
+    function testRevert_ForwardedHopRequiresBalanceUpdate() external {
+        EmptyForwardee forwardee = new EmptyForwardee();
+        bytes memory data = _encodeSwapRoute(address(this), bytes1(uint8(1)), address(forwardee), _poolKey());
+
+        _assertRouterReverts(data, InvalidRoute.selector);
+    }
+
     function test_SwapExactInSignedExclusiveSwapHop() external {
         PoolKey memory key = _signedExclusiveSwapPoolKey();
         signedExclusiveSwap.initializePool(key, 0, controller);
@@ -288,6 +325,20 @@ contract YulRouterTest is Test {
         IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
 
         _assertRouterReverts(data, ISignedExclusiveSwap.UnauthorizedLocker.selector);
+    }
+
+    function testRevert_SignedExclusiveSwapHopRequiresBalanceUpdate() external {
+        EmptyForwardee forwardee = new EmptyForwardee();
+        bytes memory data = _encodeSignedExclusiveSwapRouteWithForwardee(
+            address(this),
+            address(forwardee),
+            _signedExclusiveSwapPoolKey(),
+            SignedSwapMeta.wrap(0),
+            PoolBalanceUpdate.wrap(bytes32(0)),
+            bytes("")
+        );
+
+        _assertRouterReverts(data, InvalidRoute.selector);
     }
 
     function test_WrapperHop() external {
@@ -455,6 +506,34 @@ contract YulRouterTest is Test {
             makeAddr("ignored recipient"),
             bytes1(uint8(1)),
             VE33,
+            key,
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            targetSqrtRatio,
+            true
+        );
+
+        CORE.lock();
+
+        assertEq(forwardSpecifiedDelta, 0, "specified delta");
+        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        (SqrtRatio sqrtRatio,, uint128 liquidity) = CORE.poolState(key.toPoolId()).parse();
+        assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
+        assertEq(liquidity, 0, "liquidity");
+    }
+
+    function test_ForwardedPartialRouteMovesEmptyMEVCapturePoolToLimitWithoutDebt() external {
+        PoolKey memory key = _mevCapturePoolKey();
+        positions.maybeInitializePool(key, 0);
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-100);
+
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(1)),
+            address(mevCapture),
             key,
             TOKEN0,
             TOKEN1,
@@ -920,6 +999,19 @@ contract YulRouterTest is Test {
         });
     }
 
+    function _mevCapturePoolKey() private view returns (PoolKey memory) {
+        return PoolKey({
+            token0: TOKEN0,
+            token1: TOKEN1,
+            config: PoolConfig.wrap(
+                bytes32(
+                    (uint256(uint160(address(mevCapture))) << 96) | (uint256(FEE) << 32)
+                        | uint256(0x80000000 | VE33_TICK_SPACING)
+                )
+            )
+        });
+    }
+
     function _signedExclusiveSwapPoolKey() private pure returns (PoolKey memory) {
         return PoolKey({
             token0: TOKEN0,
@@ -1035,6 +1127,19 @@ contract YulRouterTest is Test {
         PoolBalanceUpdate minBalanceUpdate,
         bytes memory signature
     ) private pure returns (bytes memory) {
+        return _encodeSignedExclusiveSwapRouteWithForwardee(
+            recipient, SIGNED_EXCLUSIVE_SWAP, key, meta, minBalanceUpdate, signature
+        );
+    }
+
+    function _encodeSignedExclusiveSwapRouteWithForwardee(
+        address recipient,
+        address forwardee,
+        PoolKey memory key,
+        SignedSwapMeta meta,
+        PoolBalanceUpdate minBalanceUpdate,
+        bytes memory signature
+    ) private pure returns (bytes memory) {
         return bytes.concat(
             bytes1(uint8(1)), // has recipient
             bytes1(uint8(0)), // one multi-hop
@@ -1045,7 +1150,7 @@ contract YulRouterTest is Test {
             bytes16(uint128(SWAP_AMOUNT)),
             bytes1(uint8(0)), // one hop
             bytes1(uint8(4)), // signed exclusive swap hop
-            bytes20(SIGNED_EXCLUSIVE_SWAP),
+            bytes20(forwardee),
             bytes20(key.token0),
             bytes20(key.token1),
             bytes32(PoolConfig.unwrap(key.config)),
