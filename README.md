@@ -6,9 +6,9 @@ The router deliberately carries token addresses, pool configs, extension forward
 
 ## Calldata
 
-The SDK emits custom packed calldata directly, without a public router selector. Non-Core calls are interpreted as route
-data. Calls from Ekubo Core are reserved for the lock callback selector `0x00000000` and forward callback selector
-`0x00000001`.
+The SDK emits custom packed swap calldata directly, without a public router selector. Non-Core calls are interpreted as
+route data unless they use the standard `quote(bytes)` selector. Calls from Ekubo Core are reserved for the lock callback
+selector `0x00000000` and forward callback selector `0x00000001`.
 
 The primary SDK surface is `encodeRoutes(...)` / `generateCalldata(...)`, which accepts `multiHops: MultiHop[]`. Each
 multi-hop has its own specified amount and sequence of hops, all starting from the same `specifiedToken` and ending at
@@ -17,10 +17,20 @@ amounts, applies one slippage check, and settles once.
 
 The same route data can be passed through `Core.forward(router, routeData)` by an existing locker. In this mode the
 router executes the route and applies its slippage check, but deliberately does not settle. It returns
-`(address specifiedToken, address calculatedToken, int256 specifiedDelta, int256 calculatedDelta)`, where the two signed
-deltas are the debt changes left on the shared lock. This lets a caller combine a routed swap with another atomic
-operation, such as adding liquidity, before settling the net result. Any recipient encoded in the route is ignored in
-forwarded mode because the original locker owns settlement.
+`(address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount)`. The endpoint debt
+changes left on the shared lock are `specifiedAmount` and `-calculatedAmount`, respectively. This lets a caller combine a
+routed swap with another atomic operation, such as adding liquidity, before settling the net result. Any recipient
+encoded in the route is ignored in forwarded mode because the original locker owns settlement.
+
+`quote(bytes routeData)` executes that same packed route inside a Core lock, then deliberately reverts from the lock
+callback with a recognized result payload. The public entrypoint catches only that payload and returns
+`(address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount)`. Pool and extension
+state changes are rolled back, no token balance or approval is required, and unrelated route or extension errors are
+bubbled unchanged. The SDK exposes `encodeQuoteCalldata(routeData)` and `generateQuoteCalldata(...)` for this entrypoint.
+
+Direct packed-calldata swaps return the same four-word tuple after settlement. Thus direct execution, forwarding, and
+quoting have byte-for-byte identical result data for the same route and starting state. Amount signs retain the existing
+route convention: exact-input amounts are positive and exact-output amounts are negative.
 
 Every route must provide `calculatedAmountThreshold`: a positive minimum output
 for exact-in or a negative maximum input for exact-out. Omitting it throws

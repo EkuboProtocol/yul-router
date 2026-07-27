@@ -1,13 +1,13 @@
 {
-  "hand_core_hop": "63660",
-  "hand_forwarded_hop": "65432",
-  "hand_multi_multihop": "67900",
-  "hand_signed_exclusive_swap_hop": "95860",
-  "hand_ve33_hop": "49329",
-  "hand_wrapper_hop": "68581",
-  "sdk_core_hop": "63723",
-  "sdk_multi_multihop": "58363",
-  "sdk_signed_exclusive_swap_hop": "95923",
-  "sdk_ve33_hop": "49392",
-  "sdk_wrapper_hop": "61344"
+  "hand_core_hop": "63753",
+  "hand_forwarded_hop": "65525",
+  "hand_multi_multihop": "67993",
+  "hand_signed_exclusive_swap_hop": "95953",
+  "hand_ve33_hop": "49422",
+  "hand_wrapper_hop": "68674",
+  "sdk_core_hop": "63816",
+  "sdk_multi_multihop": "58456",
+  "sdk_signed_exclusive_swap_hop": "96016",
+  "sdk_ve33_hop": "49485",
+  "sdk_wrapper_hop": "61437"
 }

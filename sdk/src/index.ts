@@ -1,6 +1,7 @@
 import {
   Address,
   concatHex,
+  encodeFunctionData,
   getAddress,
   Hex,
   hexToBigInt,
@@ -19,6 +20,21 @@ export const MAX_MULTIHOP_LENGTH = 256;
 export const MAX_HOP_LENGTH = 256;
 export const YUL_ROUTER_ADDRESS: Address =
   "0x00000000D542a1Afa7A01ECB16254F7A0F8ceB61";
+
+export const YUL_ROUTER_ABI = [
+  {
+    type: "function",
+    name: "quote",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "route", type: "bytes" }],
+    outputs: [
+      { name: "specifiedToken", type: "address" },
+      { name: "calculatedToken", type: "address" },
+      { name: "specifiedAmount", type: "int256" },
+      { name: "calculatedAmount", type: "int256" },
+    ],
+  },
+] as const;
 
 export interface PoolKey {
   token0: Address;
@@ -119,6 +135,18 @@ export function encodeRoute(params: EncodeRouteParameters): Hex {
 
 export function generateCalldata(params: EncodeRoutesParameters): Hex {
   return encodeRoutes(params);
+}
+
+export function encodeQuoteCalldata(route: Hex): Hex {
+  return encodeFunctionData({
+    abi: YUL_ROUTER_ABI,
+    functionName: "quote",
+    args: [route],
+  });
+}
+
+export function generateQuoteCalldata(params: EncodeRoutesParameters): Hex {
+  return encodeQuoteCalldata(encodeRoutes(params));
 }
 
 export function encodeRoutes(params: EncodeRoutesParameters): Hex {

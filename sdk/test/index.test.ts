@@ -1,13 +1,17 @@
 import { describe, expect, it } from "bun:test";
+import { decodeFunctionData } from "viem";
 import {
   encodePoolBalanceUpdate,
+  encodeQuoteCalldata,
   encodeRoute,
   encodeRoutes,
   encodeSignedSwapMeta,
   generateCalldata,
+  generateQuoteCalldata,
   MAX_HOP_LENGTH,
   MAX_MULTIHOP_LENGTH,
   MIN_CALCULATED_AMOUNT_THRESHOLD,
+  YUL_ROUTER_ABI,
   YUL_ROUTER_ADDRESS,
 } from "../src/index.js";
 
@@ -352,6 +356,44 @@ describe("encodeRoute", () => {
         ],
       }),
     ).toThrow("disconnected");
+  });
+});
+
+describe("encodeQuoteCalldata", () => {
+  it("wraps packed routes in the quote(bytes) entrypoint", () => {
+    const parameters = {
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1_000_000n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "core",
+          poolKey: { token0, token1, config },
+          allowPartial: true,
+        },
+      ],
+    } as const;
+    const route = encodeRoute(parameters);
+    const calldata = generateQuoteCalldata({
+      specifiedToken: parameters.specifiedToken,
+      calculatedToken: parameters.calculatedToken,
+      calculatedAmountThreshold: parameters.calculatedAmountThreshold,
+      multiHops: [
+        {
+          specifiedAmount: parameters.specifiedAmount,
+          hops: parameters.hops,
+        },
+      ],
+    });
+    const decoded = decodeFunctionData({
+      abi: YUL_ROUTER_ABI,
+      data: calldata,
+    });
+
+    expect(calldata).toBe(encodeQuoteCalldata(route));
+    expect(decoded.functionName).toBe("quote");
+    expect(decoded.args[0]).toBe(route);
   });
 });
 

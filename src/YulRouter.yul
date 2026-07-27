@@ -34,6 +34,10 @@ object "YulRouter" {
                 }
             }
 
+            if eq(shr(224, calldataload(0)), 0xedfa3568) { // quote(bytes)
+                quote(core)
+            }
+
             lock(core)
 
             function lock(coreAddress) {
@@ -44,18 +48,71 @@ object "YulRouter" {
                 mstore(add(size, 4), caller())
                 mstore(add(size, 0x24), callvalue())
 
-                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0x20)) {
+                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0x80)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
 
-                return(0, 0x20)
+                return(0, 0x80)
+            }
+
+            function quote(coreAddress) {
+                // Standard ABI encoding for quote(bytes): selector, offset, byte length, route data.
+                if or(lt(calldatasize(), 0x44), iszero(eq(calldataload(4), 0x20))) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+                if callvalue() {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+
+                let size := calldataload(0x24)
+                let sizeWithPadding := add(size, 31)
+                if lt(sizeWithPadding, size) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+                let paddedSize := and(sizeWithPadding, not(31))
+                let encodedSize := add(0x44, paddedSize)
+                if or(lt(encodedSize, paddedSize), iszero(eq(calldatasize(), encodedSize))) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+
+                mstore(0, shl(224, 0xf83d08ba)) // lock()
+                calldatacopy(4, 0x44, size)
+                // The high bit cannot be present in a caller address, so it safely marks this lock as a quote.
+                mstore(add(size, 4), or(caller(), shl(255, 1)))
+                mstore(add(size, 0x24), 0)
+
+                if call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0) {
+                    revertSelector(0x4d985756) // ExpectedQuoteRevert()
+                }
+
+                if eq(returndatasize(), 0x84) {
+                    returndatacopy(0, 0, 0x20)
+                    if eq(shr(224, mload(0)), 0x4852c8eb) { // QuoteResult(address,address,int256,int256)
+                        returndatacopy(0, 4, 0x80)
+                        return(0, 0x80)
+                    }
+                }
+
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
             }
 
             function locked(coreAddress) {
                 let routeEnd := sub(calldatasize(), 0x40)
                 let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute()
-                let payer := calldataload(routeEnd)
+                let payerWithFlags := calldataload(routeEnd)
+                let payer := and(payerWithFlags, 0xffffffffffffffffffffffffffffffffffffffff)
+
+                if shr(160, payerWithFlags) {
+                    mstore(0, shl(224, 0x4852c8eb)) // QuoteResult(address,address,int256,int256)
+                    mstore(4, specifiedToken)
+                    mstore(0x24, calculatedToken)
+                    mstore(0x44, totalSpecified)
+                    mstore(0x64, totalCalculated)
+                    revert(0, 0x84)
+                }
+
                 let recipient := payer
                 if and(byte(0, calldataload(0x24)), 1) {
                     recipient := shr(96, calldataload(0x5e))
@@ -75,19 +132,22 @@ object "YulRouter" {
                     }
                 }
 
-                mstore(0, totalCalculated)
-                return(0, 0x20)
+                mstore(0, specifiedToken)
+                mstore(0x20, calculatedToken)
+                mstore(0x40, totalSpecified)
+                mstore(0x60, totalCalculated)
+                return(0, 0x80)
             }
 
             function forwarded() {
                 let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute()
 
-                // Return the two endpoint debt changes without settling them. The original locker can combine
-                // these deltas with another operation before settling the shared lock.
+                // Return route amounts without settling. The original locker can derive the endpoint debt
+                // changes as (totalSpecified, -totalCalculated) and combine them with another operation.
                 mstore(0, specifiedToken)
                 mstore(0x20, calculatedToken)
                 mstore(0x40, totalSpecified)
-                mstore(0x60, sub(0, totalCalculated))
+                mstore(0x60, totalCalculated)
                 return(0, 0x80)
             }
 

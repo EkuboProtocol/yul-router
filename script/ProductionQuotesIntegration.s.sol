@@ -61,7 +61,11 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         (bool success, bytes memory returndata) = router.call{value: callValue}(quote.data);
         if (!success) revert ProductionQuoteSwapFailed(quote.name, returndata);
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
+            abi.decode(returndata, (address, address, int256, int256));
+        require(specifiedToken == (exactOutput ? quote.outputToken : quote.inputToken), "specified token mismatch");
+        require(calculatedToken == (exactOutput ? quote.inputToken : quote.outputToken), "calculated token mismatch");
+        require(specifiedAmount == quote.specifiedAmount, "specified amount mismatch");
         uint256 inputSpent = inputBefore - _balance(quote.inputToken);
         uint256 outputReceived = _balance(quote.outputToken) - outputBefore;
 

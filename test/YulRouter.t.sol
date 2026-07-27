@@ -125,6 +125,7 @@ contract YulRouterTest is Test {
     error PartialSwapsDisallowed();
     error SlippageCheckFailed(int256);
 
+    bytes4 private constant QUOTE_SELECTOR = bytes4(keccak256("quote(bytes)"));
     address payable private constant CORE_ADDRESS = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
     address private constant TOKEN0 = 0x1111111111111111111111111111111111111111;
     address private constant TOKEN1 = 0x2222222222222222222222222222222222222222;
@@ -152,8 +153,8 @@ contract YulRouterTest is Test {
     bytes private forwardData;
     address private forwardSpecifiedToken;
     address private forwardCalculatedToken;
-    int256 private forwardSpecifiedDelta;
-    int256 private forwardCalculatedDelta;
+    int256 private forwardSpecifiedAmount;
+    int256 private forwardCalculatedAmount;
     uint256 private controllerPk;
     ControllerAddress private controller;
 
@@ -202,7 +203,11 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_core_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
+            _decodeRouteResult(returndata);
+        assertEq(specifiedToken, TOKEN0, "specified token");
+        assertEq(calculatedToken, TOKEN1, "calculated token");
+        assertEq(specifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount");
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
@@ -224,7 +229,7 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_ve33_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
@@ -244,7 +249,7 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_forwarded_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
@@ -265,7 +270,7 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
@@ -299,7 +304,7 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_signed_exclusive_swap_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(calculatedAmount), "token1 received");
@@ -366,7 +371,7 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_wrapper_hop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertEq(calculatedAmount, int256(uint256(SWAP_AMOUNT)), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(IERC20(WRAPPED_TOKEN0).balanceOf(address(this)) - wrappedBefore, SWAP_AMOUNT, "wrapped received");
@@ -405,7 +410,7 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", "hand_multi_multihop");
         assertTrue(success, "router call");
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        int256 calculatedAmount = _calculatedAmountFromResult(returndata);
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT * 2, "token0 spent");
         assertEq(IERC20(TOKEN2).balanceOf(address(this)) - token2Before, uint256(calculatedAmount), "token2 received");
@@ -432,6 +437,101 @@ contract YulRouterTest is Test {
         _executeSdkSwap("sdk_multi_multihop", c.multiMultiHop, TOKEN0, TOKEN2, SWAP_AMOUNT * 2);
     }
 
+    function test_QuoteCoreRouteReturnsAmountsWithoutStateChanges() external {
+        PoolKey memory key = _poolKey();
+        address quoteCaller = makeAddr("quote caller");
+        bytes memory data = _encodeOneHopRoute(quoteCaller);
+        PoolState stateBefore = CORE.poolState(key.toPoolId());
+
+        vm.prank(quoteCaller);
+        (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+
+        assertTrue(success, "quote call");
+        assertEq(returndata.length, 0x80, "quote return length");
+        (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
+            abi.decode(returndata, (address, address, int256, int256));
+        assertEq(specifiedToken, TOKEN0, "specified token");
+        assertEq(calculatedToken, TOKEN1, "calculated token");
+        assertEq(specifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount");
+        assertGt(calculatedAmount, 0, "calculated amount");
+        assertEq(PoolState.unwrap(CORE.poolState(key.toPoolId())), PoolState.unwrap(stateBefore), "pool state");
+        assertEq(IERC20(TOKEN0).balanceOf(quoteCaller), 0, "caller token0 balance");
+        assertEq(IERC20(TOKEN1).balanceOf(quoteCaller), 0, "caller token1 balance");
+        assertEq(IERC20(TOKEN0).allowance(quoteCaller, router), 0, "caller allowance");
+    }
+
+    function test_QuoteForwardedPartialRouteReturnsActualAmountsWithoutStateChanges() external {
+        PoolKey memory key = _poolKey();
+        SwapForwardee forwardee = new SwapForwardee(CORE);
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-1);
+        bytes memory data = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
+            bytes1(uint8(1)),
+            address(forwardee),
+            key,
+            TOKEN0,
+            TOKEN1,
+            int128(0),
+            int128(SWAP_AMOUNT),
+            targetSqrtRatio,
+            true
+        );
+        PoolState stateBefore = CORE.poolState(key.toPoolId());
+
+        (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+
+        assertTrue(success, "quote call");
+        (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
+            abi.decode(returndata, (address, address, int256, int256));
+        assertEq(specifiedToken, TOKEN0, "specified token");
+        assertEq(calculatedToken, TOKEN1, "calculated token");
+        assertGt(specifiedAmount, 0, "specified amount");
+        assertLt(specifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount below maximum");
+        assertGt(calculatedAmount, 0, "calculated amount");
+        assertEq(PoolState.unwrap(CORE.poolState(key.toPoolId())), PoolState.unwrap(stateBefore), "pool state");
+    }
+
+    function test_DirectForwardAndQuoteReturnIdenticalData() external {
+        bytes memory data = _encodeOneHopRoute(address(this));
+        (bool quoteSuccess, bytes memory quoteResult) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(quoteSuccess, "quote call");
+
+        uint256 state = vm.snapshotState();
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+        (bool directSuccess, bytes memory directResult) = router.call(data);
+        assertTrue(directSuccess, "direct call");
+        assertEq(directResult, quoteResult, "direct and quote result");
+
+        assertTrue(vm.revertToState(state), "restore state");
+        forwardTarget = router;
+        forwardData = data;
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        CORE.lock();
+        bytes memory forwardResult =
+            abi.encode(forwardSpecifiedToken, forwardCalculatedToken, forwardSpecifiedAmount, forwardCalculatedAmount);
+
+        assertEq(forwardResult, quoteResult, "forward and quote result");
+    }
+
+    function testRevert_QuoteBubblesRouteErrors() external {
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this),
+            bytes1(uint8(0)),
+            address(0),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            int128(POSITION_AMOUNT),
+            int128(SWAP_AMOUNT)
+        );
+
+        (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+
+        assertFalse(success, "quote call");
+        assertEq(_selector(returndata), SlippageCheckFailed.selector, "revert selector");
+    }
+
     function testRevert_DelegateCall() external {
         DelegateCaller caller = new DelegateCaller();
 
@@ -439,7 +539,7 @@ contract YulRouterTest is Test {
         caller.delegate(router, _encodeOneHopRoute(address(this)));
     }
 
-    function test_ForwardedRouteReturnsDebtsToOriginalLocker() external {
+    function test_ForwardedRouteReturnsAmountsToOriginalLocker() external {
         forwardTarget = router;
         forwardData = _encodeOneHopRoute(makeAddr("ignored recipient"));
 
@@ -451,11 +551,11 @@ contract YulRouterTest is Test {
 
         assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
         assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
-        assertEq(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta");
-        assertLt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(forwardSpecifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount");
+        assertGt(forwardCalculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(
-            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(forwardCalculatedAmount), "token1 received"
         );
         assertEq(IERC20(TOKEN0).allowance(address(this), router), 0, "router allowance");
     }
@@ -486,8 +586,8 @@ contract YulRouterTest is Test {
 
         assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
         assertEq(forwardCalculatedToken, TOKEN2, "calculated token");
-        assertEq(forwardSpecifiedDelta, 0, "specified delta");
-        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        assertEq(forwardSpecifiedAmount, 0, "specified amount");
+        assertEq(forwardCalculatedAmount, 0, "calculated amount");
         assertEq(IERC20(TOKEN0).balanceOf(address(this)), token0Before, "token0 balance");
         assertEq(IERC20(TOKEN2).balanceOf(address(this)), token2Before, "token2 balance");
 
@@ -517,8 +617,8 @@ contract YulRouterTest is Test {
 
         CORE.lock();
 
-        assertEq(forwardSpecifiedDelta, 0, "specified delta");
-        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        assertEq(forwardSpecifiedAmount, 0, "specified amount");
+        assertEq(forwardCalculatedAmount, 0, "calculated amount");
         (SqrtRatio sqrtRatio,, uint128 liquidity) = CORE.poolState(key.toPoolId()).parse();
         assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
         assertEq(liquidity, 0, "liquidity");
@@ -545,14 +645,14 @@ contract YulRouterTest is Test {
 
         CORE.lock();
 
-        assertEq(forwardSpecifiedDelta, 0, "specified delta");
-        assertEq(forwardCalculatedDelta, 0, "calculated delta");
+        assertEq(forwardSpecifiedAmount, 0, "specified amount");
+        assertEq(forwardCalculatedAmount, 0, "calculated amount");
         (SqrtRatio sqrtRatio,, uint128 liquidity) = CORE.poolState(key.toPoolId()).parse();
         assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
         assertEq(liquidity, 0, "liquidity");
     }
 
-    function test_ForwardedPartialRouteReportsActualDebtsAtPriceLimit() external {
+    function test_ForwardedPartialRouteReportsActualAmountsAtPriceLimit() external {
         PoolKey memory key = _poolKey();
         SqrtRatio targetSqrtRatio = tickToSqrtRatio(-1);
 
@@ -576,12 +676,14 @@ contract YulRouterTest is Test {
 
         CORE.lock();
 
-        assertGt(forwardSpecifiedDelta, 0, "specified delta");
-        assertLt(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta below maximum");
-        assertLt(forwardCalculatedDelta, 0, "calculated delta");
-        assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), uint256(forwardSpecifiedDelta), "token0 spent");
+        assertGt(forwardSpecifiedAmount, 0, "specified amount");
+        assertLt(forwardSpecifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount below maximum");
+        assertGt(forwardCalculatedAmount, 0, "calculated amount");
         assertEq(
-            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+            token0Before - IERC20(TOKEN0).balanceOf(address(this)), uint256(forwardSpecifiedAmount), "token0 spent"
+        );
+        assertEq(
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(forwardCalculatedAmount), "token1 received"
         );
 
         (SqrtRatio sqrtRatio,,) = CORE.poolState(key.toPoolId()).parse();
@@ -663,7 +765,7 @@ contract YulRouterTest is Test {
         _assertRouterReverts(data, PartialSwapsDisallowed.selector);
     }
 
-    function test_ForwardedExactOutRouteReturnsSignedDebts() external {
+    function test_ForwardedExactOutRouteReturnsSignedAmounts() external {
         forwardTarget = router;
         forwardData = _encodeSwapRouteWithAmounts(
             makeAddr("ignored recipient"),
@@ -684,11 +786,11 @@ contract YulRouterTest is Test {
 
         assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
         assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
-        assertEq(forwardSpecifiedDelta, -int256(uint256(SWAP_AMOUNT)), "specified delta");
-        assertGt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(forwardSpecifiedAmount, -int256(uint256(SWAP_AMOUNT)), "specified amount");
+        assertLt(forwardCalculatedAmount, int256(0), "calculated amount");
         assertEq(IERC20(TOKEN0).balanceOf(address(this)) - token0Before, SWAP_AMOUNT, "token0 received");
         assertEq(
-            token1Before - IERC20(TOKEN1).balanceOf(address(this)), uint256(forwardCalculatedDelta), "token1 spent"
+            token1Before - IERC20(TOKEN1).balanceOf(address(this)), uint256(-forwardCalculatedAmount), "token1 spent"
         );
     }
 
@@ -706,11 +808,11 @@ contract YulRouterTest is Test {
 
         assertEq(forwardSpecifiedToken, TOKEN0, "specified token");
         assertEq(forwardCalculatedToken, TOKEN1, "calculated token");
-        assertEq(forwardSpecifiedDelta, int256(uint256(SWAP_AMOUNT)), "specified delta");
-        assertLt(forwardCalculatedDelta, int256(0), "calculated delta");
+        assertEq(forwardSpecifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount");
+        assertGt(forwardCalculatedAmount, int256(0), "calculated amount");
         assertEq(token0Before - IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "token0 spent");
         assertEq(
-            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(-forwardCalculatedDelta), "token1 received"
+            IERC20(TOKEN1).balanceOf(address(this)) - token1Before, uint256(forwardCalculatedAmount), "token1 received"
         );
     }
 
@@ -881,7 +983,7 @@ contract YulRouterTest is Test {
         (bool success, bytes memory returndata) = router.call(data);
 
         if (success) {
-            int256 calculatedAmount = abi.decode(returndata, (int256));
+            int256 calculatedAmount = _calculatedAmountFromResult(returndata);
             uint256 spent = balanceBefore - IERC20(TOKEN1).balanceOf(payer);
 
             assertLt(calculatedAmount, int256(0), "calculated amount");
@@ -900,11 +1002,11 @@ contract YulRouterTest is Test {
 
     function locked_6416899205(uint256) external {
         bytes memory result = CORE.forward(forwardTarget, forwardData);
-        (forwardSpecifiedToken, forwardCalculatedToken, forwardSpecifiedDelta, forwardCalculatedDelta) =
+        (forwardSpecifiedToken, forwardCalculatedToken, forwardSpecifiedAmount, forwardCalculatedAmount) =
             abi.decode(result, (address, address, int256, int256));
 
-        _settleForwardDelta(forwardSpecifiedToken, forwardSpecifiedDelta);
-        _settleForwardDelta(forwardCalculatedToken, forwardCalculatedDelta);
+        _settleForwardDelta(forwardSpecifiedToken, forwardSpecifiedAmount);
+        _settleForwardDelta(forwardCalculatedToken, -forwardCalculatedAmount);
     }
 
     function _settleForwardDelta(address token, int256 delta) private {
@@ -952,7 +1054,11 @@ contract YulRouterTest is Test {
         vm.snapshotGasLastCall("yul_router", gasName);
         assertTrue(success, gasName);
 
-        int256 calculatedAmount = abi.decode(returndata, (int256));
+        (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
+            _decodeRouteResult(returndata);
+        assertEq(specifiedToken, tokenIn, "specified token");
+        assertEq(calculatedToken, tokenOut, "calculated token");
+        assertEq(specifiedAmount, int256(amountIn), "specified amount");
         assertGt(calculatedAmount, int256(0), "calculated amount");
         assertEq(tokenInBefore - IERC20(tokenIn).balanceOf(address(this)), amountIn, "tokenIn spent");
         assertEq(
@@ -966,6 +1072,18 @@ contract YulRouterTest is Test {
         assertFalse(success, "router call");
         assertGe(returndata.length, 4, "revert data length");
         assertEq(_selector(returndata), selector, "revert selector");
+    }
+
+    function _calculatedAmountFromResult(bytes memory returndata) private pure returns (int256 calculatedAmount) {
+        (,,, calculatedAmount) = _decodeRouteResult(returndata);
+    }
+
+    function _decodeRouteResult(bytes memory returndata)
+        private
+        pure
+        returns (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount)
+    {
+        return abi.decode(returndata, (address, address, int256, int256));
     }
 
     function _selector(bytes memory returndata) private pure returns (bytes4 selector) {
