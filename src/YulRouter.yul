@@ -86,6 +86,19 @@ object "YulRouter" {
                     revertSelector(0x4d985756) // ExpectedQuoteRevert()
                 }
 
+                // Calls made while executing the quoted route wrap downstream failures with an
+                // internal marker. Unwrap exactly one layer so arbitrary callees cannot forge an
+                // unwrapped QuoteResult, while their original revert data still bubbles unchanged.
+                if iszero(lt(returndatasize(), 0x20)) {
+                    returndatacopy(0, 0, 0x20)
+                    // keccak256("YulRouter.QuoteFailure.v1")
+                    if eq(mload(0), 0xeff1c3af4643aab95042365a434f0e14df8d7fedb3d4d37c79a7b7ad890d567c) {
+                        let downstreamSize := sub(returndatasize(), 0x20)
+                        returndatacopy(0, 0x20, downstreamSize)
+                        revert(0, downstreamSize)
+                    }
+                }
+
                 if eq(returndatasize(), 0x84) {
                     returndatacopy(0, 0, 0x20)
                     if eq(shr(224, mload(0)), 0x4852c8eb) { // QuoteResult(address,address,int256,int256)
@@ -448,8 +461,7 @@ object "YulRouter" {
                 mstore(0xc4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
                 if iszero(call(gas(), coreAddress, 0, 0x60, 132, 0x60, 64)) {
-                    returndatacopy(0x60, 0, returndatasize())
-                    revert(0x60, returndatasize())
+                    revertExternalCall(0x60)
                 }
 
                 update := mload(0x60)
@@ -464,8 +476,7 @@ object "YulRouter" {
                 mstore(0xe4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
                 if iszero(call(gas(), coreAddress, 0, 0x60, 164, 0x60, 64)) {
-                    returndatacopy(0x60, 0, returndatasize())
-                    revert(0x60, returndatasize())
+                    revertExternalCall(0x60)
                 }
                 if lt(returndatasize(), 32) {
                     revertSelector(0x84e505d2) // InvalidRoute()
@@ -510,8 +521,7 @@ object "YulRouter" {
                 mstore(add(signaturePtr, signatureLength), 0)
 
                 if iszero(call(gas(), coreAddress, 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
-                    returndatacopy(ptr, 0, returndatasize())
-                    revert(ptr, returndatasize())
+                    revertExternalCall(ptr)
                 }
                 if lt(returndatasize(), 32) {
                     revertSelector(0x84e505d2) // InvalidRoute()
@@ -526,8 +536,7 @@ object "YulRouter" {
                 mstore(36, amount)
 
                 if iszero(call(gas(), coreAddress, 0, 0, 68, 0, 0)) {
-                    returndatacopy(0, 0, returndatasize())
-                    revert(0, returndatasize())
+                    revertExternalCall(0)
                 }
             }
 
@@ -660,6 +669,28 @@ object "YulRouter" {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
+            }
+
+            function revertExternalCall(ptr) {
+                let size := returndatasize()
+
+                // A selector-zero callback with high payer bits is the quote lock callback.
+                // Prefixing every downstream failure in that context gives quote() an
+                // origin-authenticated boundary: even if a callee returns this marker or a
+                // QuoteResult payload, it receives another marker before reaching quote().
+                let payerWithFlags := calldataload(sub(calldatasize(), 0x40))
+                if and(
+                    iszero(shr(224, calldataload(0))),
+                    iszero(iszero(shr(160, payerWithFlags)))
+                ) {
+                    // keccak256("YulRouter.QuoteFailure.v1")
+                    mstore(ptr, 0xeff1c3af4643aab95042365a434f0e14df8d7fedb3d4d37c79a7b7ad890d567c)
+                    returndatacopy(add(ptr, 0x20), 0, size)
+                    revert(ptr, add(size, 0x20))
+                }
+
+                returndatacopy(ptr, 0, size)
+                revert(ptr, size)
             }
 
             function revertSelector(selector) {

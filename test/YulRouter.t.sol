@@ -74,6 +74,33 @@ contract EmptyForwardee {
     function forwarded_2374103877(Locker) external {}
 }
 
+contract QuoteResultSpoofer {
+    function forwarded_2374103877(Locker) external pure {
+        assembly ("memory-safe") {
+            mstore(0, shl(224, 0x4852c8eb))
+            mstore(4, 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+            mstore(0x24, 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)
+            mstore(0x44, 123)
+            mstore(0x64, 456)
+            revert(0, 0x84)
+        }
+    }
+}
+
+contract QuoteFailureMarkerSpoofer {
+    function forwarded_2374103877(Locker) external pure {
+        assembly ("memory-safe") {
+            mstore(0, 0xeff1c3af4643aab95042365a434f0e14df8d7fedb3d4d37c79a7b7ad890d567c)
+            mstore(0x20, shl(224, 0x4852c8eb))
+            mstore(0x24, 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+            mstore(0x44, 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)
+            mstore(0x64, 123)
+            mstore(0x84, 456)
+            revert(0, 0xa4)
+        }
+    }
+}
+
 contract DebtForwardee {
     ICore private immutable CORE;
     address private immutable debtToken;
@@ -126,6 +153,8 @@ contract YulRouterTest is Test {
     error SlippageCheckFailed(int256);
 
     bytes4 private constant QUOTE_SELECTOR = bytes4(keccak256("quote(bytes)"));
+    bytes4 private constant QUOTE_RESULT_SELECTOR = bytes4(keccak256("QuoteResult(address,address,int256,int256)"));
+    bytes32 private constant QUOTE_FAILURE_MARKER = 0xeff1c3af4643aab95042365a434f0e14df8d7fedb3d4d37c79a7b7ad890d567c;
     address payable private constant CORE_ADDRESS = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
     address private constant TOKEN0 = 0x1111111111111111111111111111111111111111;
     address private constant TOKEN1 = 0x2222222222222222222222222222222222222222;
@@ -530,6 +559,41 @@ contract YulRouterTest is Test {
 
         assertFalse(success, "quote call");
         assertEq(_selector(returndata), SlippageCheckFailed.selector, "revert selector");
+    }
+
+    function testRevert_QuoteBubblesSpoofedQuoteResultInsteadOfReturningIt() external {
+        QuoteResultSpoofer spoofer = new QuoteResultSpoofer();
+        bytes memory data = _encodeSwapRoute(address(this), bytes1(uint8(1)), address(spoofer), _poolKey());
+        bytes memory spoofedResult = abi.encodeWithSelector(
+            QUOTE_RESULT_SELECTOR,
+            0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa,
+            0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB,
+            int256(123),
+            int256(456)
+        );
+
+        (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+
+        assertFalse(success, "quote call");
+        assertEq(returndata, spoofedResult, "downstream revert data");
+    }
+
+    function testRevert_QuoteBubblesCalleeSuppliedFailureMarkerWithoutUnwrappingItTwice() external {
+        QuoteFailureMarkerSpoofer spoofer = new QuoteFailureMarkerSpoofer();
+        bytes memory data = _encodeSwapRoute(address(this), bytes1(uint8(1)), address(spoofer), _poolKey());
+        bytes memory spoofedResult = abi.encodeWithSelector(
+            QUOTE_RESULT_SELECTOR,
+            0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa,
+            0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB,
+            int256(123),
+            int256(456)
+        );
+        bytes memory downstreamRevert = bytes.concat(QUOTE_FAILURE_MARKER, spoofedResult);
+
+        (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+
+        assertFalse(success, "quote call");
+        assertEq(returndata, downstreamRevert, "downstream revert data");
     }
 
     function testRevert_DelegateCall() external {
