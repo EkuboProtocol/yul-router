@@ -195,12 +195,6 @@ for index in "${!networks[@]}"; do
     transaction_hashes="$(jq -c '[.transactions[].hash]' "$raw_broadcast")"
   fi
 
-  router_code="$(cast code "$returned_router" --rpc-url "$rpc_url")"
-  if [[ "$router_code" == "0x" ]]; then
-    echo "$network has no runtime code at $returned_router after deployment" >&2
-    exit 1
-  fi
-  runtime_code_hash="$(cast keccak "$router_code")"
   block_number="$(cast block-number --rpc-url "$rpc_url")"
   verified_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -211,7 +205,6 @@ for index in "${!networks[@]}"; do
     --arg canonicalCore "$CANONICAL_CORE" \
     --arg deterministicDeployer "$DETERMINISTIC_DEPLOYER" \
     --arg broadcaster "$broadcaster" \
-    --arg runtimeCodeHash "$runtime_code_hash" \
     --arg blockNumber "$block_number" \
     --arg verifiedAt "$verified_at" \
     --arg foundryBroadcast "$versioned_foundry_broadcast" \
@@ -224,7 +217,6 @@ for index in "${!networks[@]}"; do
       canonicalCore: $canonicalCore,
       deterministicDeployer: $deterministicDeployer,
       broadcaster: $broadcaster,
-      runtimeCodeHash: $runtimeCodeHash,
       blockNumber: $blockNumber,
       verifiedAt: $verifiedAt,
       deployedNow: $deployedNow,

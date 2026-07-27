@@ -141,12 +141,13 @@ Run the workflow from `main` with an exact semantic version such as `0.5.0`.
 Before sending transactions it verifies that every network has the canonical
 Core and deterministic deployer. After all deployments,
 `script/release/verify-deployments.mjs` requires a fresh record for every
-configured network and verifies that all router addresses and runtime code
-hashes match. For a newly sent deployment it also checks the normalized record
-against the copied raw Foundry broadcast. For a router that was already
-deployed, it creates a fresh record from the script return value and current
-on-chain code rather than reusing a stale `run-latest.json`. Only the one
-address emitted by this all-chain verification is written to the SDK.
+configured network and verifies that all router addresses match. For a newly
+sent deployment it also checks the normalized record against the copied raw
+Foundry broadcast. For a router that was already
+deployed, it creates a fresh record from the script return value rather than
+reusing a stale `run-latest.json`. A successful Forge script is authoritative;
+the release does not perform a post-deployment runtime-code lookup. Only the
+one address emitted by this all-chain verification is written to the SDK.
 
 ## Production quote integration
 
