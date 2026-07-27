@@ -38,15 +38,21 @@ instead of encoding an unbounded slippage threshold. Passing the boolean
 `false` explicitly opts into the legacy unbounded threshold (`0n` for exact-in
 or the signed `int128` minimum for exact-out).
 
-Core and forwarded swap hops accept an optional `allowPartial` flag for
-target-price execution.
-When enabled, the router accounts for the amount actually swapped instead of
-requiring the specified amount to be fully filled. It is intentionally limited
-to single-hop paths, so a partial fill cannot strand debt in an intermediate
+Core and forwarded swap hops accept an optional `allowPartial` flag. When
+enabled, the router accounts for the amount actually swapped instead of
+requiring the specified amount to be fully filled. This is generic settlement
+validation rather than a distinct swap type. It is intentionally limited to
+single-hop paths, so a partial fill cannot strand debt in an intermediate
 token. Exact-input fills must remain between zero and the positive requested
 input; exact-output fills must remain between the negative requested output and
 zero. Other independent paths may still be included in the same aggregated
-route. This also lets a swap move an initialized pool with no liquidity to its
+route.
+
+A caller that wants to move a pool to a target price uses a normal partial
+exact-output swap with `specifiedAmount = type(int128).min` and the target as
+its `sqrtRatioLimit`. The price limit normally stops the otherwise unfillable
+request, and the router reports the actual specified and calculated amounts.
+The same pattern can move an initialized pool with no liquidity directly to its
 `sqrtRatioLimit`: Core returns zero token amounts, and a forwarded route reports
 zero endpoint amounts for the caller to combine with a subsequent liquidity
 deposit.

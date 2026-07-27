@@ -185,7 +185,7 @@ describe("encodeRoute", () => {
       encodeRoute({
         specifiedToken: token0,
         calculatedToken: token1,
-        specifiedAmount: -1n,
+        specifiedAmount: -(1n << 127n),
         calculatedAmountThreshold: false,
         hops: [
           {

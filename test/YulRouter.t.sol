@@ -460,10 +460,10 @@ contract YulRouterTest is Test {
         assertEq(IERC20(TOKEN0).allowance(quoteCaller, router), 0, "caller allowance");
     }
 
-    function test_QuoteForwardedPartialRouteReturnsActualAmountsWithoutStateChanges() external {
+    function test_QuoteForwardedExactOutputPartialRouteReturnsActualAmountsWithoutStateChanges() external {
         PoolKey memory key = _poolKey();
         SwapForwardee forwardee = new SwapForwardee(CORE);
-        SqrtRatio targetSqrtRatio = tickToSqrtRatio(-1);
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(1);
         bytes memory data = _encodeSwapRouteWithParameters(
             makeAddr("ignored recipient"),
             bytes1(uint8(1)),
@@ -471,8 +471,8 @@ contract YulRouterTest is Test {
             key,
             TOKEN0,
             TOKEN1,
-            int128(0),
-            int128(SWAP_AMOUNT),
+            -int128(POSITION_AMOUNT),
+            type(int128).min,
             targetSqrtRatio,
             true
         );
@@ -485,9 +485,9 @@ contract YulRouterTest is Test {
             abi.decode(returndata, (address, address, int256, int256));
         assertEq(specifiedToken, TOKEN0, "specified token");
         assertEq(calculatedToken, TOKEN1, "calculated token");
-        assertGt(specifiedAmount, 0, "specified amount");
-        assertLt(specifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount below maximum");
-        assertGt(calculatedAmount, 0, "calculated amount");
+        assertLt(specifiedAmount, 0, "specified amount");
+        assertGt(specifiedAmount, int256(type(int128).min), "specified amount above requested minimum");
+        assertLt(calculatedAmount, 0, "calculated amount");
         assertEq(PoolState.unwrap(CORE.poolState(key.toPoolId())), PoolState.unwrap(stateBefore), "pool state");
     }
 
@@ -723,7 +723,7 @@ contract YulRouterTest is Test {
             TOKEN0,
             TOKEN1,
             -int128(POSITION_AMOUNT),
-            -int128(SWAP_AMOUNT),
+            type(int128).min,
             targetSqrtRatio,
             true
         );
@@ -735,7 +735,7 @@ contract YulRouterTest is Test {
         CORE.lock();
 
         assertLt(forwardSpecifiedAmount, 0, "specified amount");
-        assertGt(forwardSpecifiedAmount, -int256(uint256(SWAP_AMOUNT)), "specified amount above requested minimum");
+        assertGt(forwardSpecifiedAmount, int256(type(int128).min), "specified amount above requested minimum");
         assertLt(forwardCalculatedAmount, 0, "calculated amount");
         assertEq(
             IERC20(TOKEN0).balanceOf(address(this)) - token0Before, uint256(-forwardSpecifiedAmount), "token0 received"
