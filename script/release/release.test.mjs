@@ -17,7 +17,6 @@ import {
 
 const ROUTER = "0x00000000D542a1Afa7A01ECB16254F7A0F8ceB61";
 const OTHER_ROUTER = "0x1111111111111111111111111111111111111111";
-const CODE_HASH = `0x${"22".repeat(32)}`;
 const TRANSACTION_HASH = `0x${"33".repeat(32)}`;
 const DEFAULT_NETWORKS = [
   "eth-mainnet",
@@ -35,7 +34,6 @@ function deployment(network, chainId, overrides = {}) {
     network,
     chainId,
     router: ROUTER,
-    runtimeCodeHash: CODE_HASH,
     deployedNow: false,
     transactionHashes: [],
     foundryBroadcast: null,
@@ -91,6 +89,16 @@ test("release publishing uses npm trusted publishing without a token", async () 
   );
 });
 
+test("deployment trusts a successful Forge script without reading router code afterward", async () => {
+  const script = await readFile(
+    new URL("./deploy-router.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(script, /cast code "\$returned_router"/);
+  assert.doesNotMatch(script, /no runtime code .* after deployment/);
+});
+
 test("deployment verification returns one shared router address", () => {
   const verified = verifyDeploymentRecords(
     ["eth-mainnet", "base-sepolia"],
@@ -126,19 +134,6 @@ test("deployment verification rejects missing or mismatched chains", () => {
         ],
       ),
     /router address mismatch/,
-  );
-  assert.throws(
-    () =>
-      verifyDeploymentRecords(
-        ["eth-mainnet", "base-sepolia"],
-        [
-          deployment("eth-mainnet", "1"),
-          deployment("base-sepolia", "84532", {
-            runtimeCodeHash: `0x${"33".repeat(32)}`,
-          }),
-        ],
-      ),
-    /runtime code hash mismatch/,
   );
 });
 

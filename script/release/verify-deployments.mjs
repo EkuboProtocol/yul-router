@@ -38,7 +38,6 @@ export function verifyDeploymentRecords(networks, records) {
   const recordsByNetwork = new Map();
   const seenChainIds = new Set();
   let router;
-  let runtimeCodeHash;
 
   for (const record of records) {
     if (!record || typeof record !== "object") {
@@ -58,9 +57,6 @@ export function verifyDeploymentRecords(networks, records) {
     }
     if (!ADDRESS_PATTERN.test(record.router)) {
       throw new Error(`${record.network} has invalid router address`);
-    }
-    if (!HASH_PATTERN.test(record.runtimeCodeHash)) {
-      throw new Error(`${record.network} has invalid runtime code hash`);
     }
     if (typeof record.deployedNow !== "boolean") {
       throw new Error(`${record.network} has invalid deployedNow value`);
@@ -102,16 +98,6 @@ export function verifyDeploymentRecords(networks, records) {
         `router address mismatch: ${record.network} has ${record.router}, expected ${router}`,
       );
     }
-    if (runtimeCodeHash === undefined) {
-      runtimeCodeHash = record.runtimeCodeHash;
-    } else if (
-      record.runtimeCodeHash.toLowerCase() !== runtimeCodeHash.toLowerCase()
-    ) {
-      throw new Error(
-        `runtime code hash mismatch on ${record.network}: ${record.runtimeCodeHash}`,
-      );
-    }
-
     recordsByNetwork.set(record.network, record);
     seenChainIds.add(record.chainId);
   }
@@ -124,7 +110,6 @@ export function verifyDeploymentRecords(networks, records) {
 
   return {
     router,
-    runtimeCodeHash,
     deployments: networks.map((network) => recordsByNetwork.get(network)),
   };
 }
@@ -219,7 +204,6 @@ export async function verifyReleaseDeployments(
   const manifest = {
     version: releaseVersion,
     router: verified.router,
-    runtimeCodeHash: verified.runtimeCodeHash,
     deployments: verified.deployments,
   };
   const serializedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
