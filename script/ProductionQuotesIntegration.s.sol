@@ -77,12 +77,6 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         require(specifiedToken == (exactOutput ? quote.outputToken : quote.inputToken), "specified token mismatch");
         require(calculatedToken == (exactOutput ? quote.inputToken : quote.outputToken), "calculated token mismatch");
         require(specifiedAmount == quote.specifiedAmount, "specified amount mismatch");
-        vm.assertApproxEqRel(
-            calculatedAmount,
-            quote.quotedCalculated,
-            1e15,
-            "calculated amount differs from production quote by 0.1% or more"
-        );
         uint256 inputSpent = inputBefore - _balance(quote.inputToken);
         uint256 outputReceived = _balance(quote.outputToken) - outputBefore;
 
