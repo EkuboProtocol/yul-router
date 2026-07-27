@@ -710,21 +710,42 @@ contract YulRouterTest is Test {
         _assertRouterReverts(data, PartialSwapsDisallowed.selector);
     }
 
-    function testRevert_PartialSwapMustBeExactInput() external {
-        bytes memory data = _encodeSwapRouteWithParameters(
-            address(this),
+    function test_ForwardedExactOutputPartialRouteReportsActualAmountsAtPriceLimit() external {
+        PoolKey memory key = _poolKey();
+        SqrtRatio targetSqrtRatio = tickToSqrtRatio(1);
+
+        forwardTarget = router;
+        forwardData = _encodeSwapRouteWithParameters(
+            makeAddr("ignored recipient"),
             bytes1(uint8(0)),
             address(0),
-            _poolKey(),
+            key,
             TOKEN0,
             TOKEN1,
             -int128(POSITION_AMOUNT),
             -int128(SWAP_AMOUNT),
-            SqrtRatio.wrap(0),
+            targetSqrtRatio,
             true
         );
 
-        _assertRouterReverts(data, InvalidRoute.selector);
+        deal(TOKEN1, address(this), POSITION_AMOUNT);
+        uint256 token0Before = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+
+        CORE.lock();
+
+        assertLt(forwardSpecifiedAmount, 0, "specified amount");
+        assertGt(forwardSpecifiedAmount, -int256(uint256(SWAP_AMOUNT)), "specified amount above requested minimum");
+        assertLt(forwardCalculatedAmount, 0, "calculated amount");
+        assertEq(
+            IERC20(TOKEN0).balanceOf(address(this)) - token0Before, uint256(-forwardSpecifiedAmount), "token0 received"
+        );
+        assertEq(
+            token1Before - IERC20(TOKEN1).balanceOf(address(this)), uint256(-forwardCalculatedAmount), "token1 spent"
+        );
+
+        (SqrtRatio sqrtRatio,,) = CORE.poolState(key.toPoolId()).parse();
+        assertEq(SqrtRatio.unwrap(sqrtRatio), SqrtRatio.unwrap(targetSqrtRatio), "sqrt ratio");
     }
 
     function testRevert_PartialSwapMustBeSingleHop() external {
@@ -757,6 +778,25 @@ contract YulRouterTest is Test {
             TOKEN1,
             int128(0),
             int128(SWAP_AMOUNT),
+            SqrtRatio.wrap(0),
+            true
+        );
+        deal(TOKEN2, CORE_ADDRESS, 1);
+
+        _assertRouterReverts(data, PartialSwapsDisallowed.selector);
+    }
+
+    function testRevert_PartialExactOutputCannotReceiveMoreThanSpecified() external {
+        DebtForwardee forwardee = new DebtForwardee(CORE, TOKEN2, 1, SWAP_AMOUNT * 2);
+        bytes memory data = _encodeSwapRouteWithParameters(
+            address(this),
+            bytes1(uint8(1)),
+            address(forwardee),
+            _poolKey(),
+            TOKEN1,
+            TOKEN0,
+            -int128(POSITION_AMOUNT),
+            -int128(SWAP_AMOUNT),
             SqrtRatio.wrap(0),
             true
         );

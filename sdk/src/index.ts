@@ -191,9 +191,9 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       (hop) =>
         (hop.type === "core" || hop.type === "forwarded") && hop.allowPartial,
     );
-    if (partialHop && (hops.length !== 1 || specifiedAmount <= 0n)) {
+    if (partialHop && (hops.length !== 1 || specifiedAmount === 0n)) {
       throw new Error(
-        "allowPartial is only valid for single-hop exact-input paths",
+        "allowPartial is only valid for single-hop paths with a nonzero specifiedAmount",
       );
     }
 

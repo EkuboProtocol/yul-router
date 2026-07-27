@@ -304,7 +304,7 @@ object "YulRouter" {
             }
 
             function validatePartialSwap(allowPartial, hopCount, amount) {
-                if and(allowPartial, or(iszero(eq(hopCount, 1)), iszero(sgt(amount, 0)))) {
+                if and(allowPartial, or(iszero(eq(hopCount, 1)), iszero(amount))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
             }
@@ -543,8 +543,16 @@ object "YulRouter" {
                         }
                     }
                     default {
-                        if or(slt(delta1, 0), sgt(delta1, amount)) {
-                            revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                        switch slt(amount, 0)
+                        case 0 {
+                            if or(slt(delta1, 0), sgt(delta1, amount)) {
+                                revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                            }
+                        }
+                        default {
+                            if or(slt(delta1, amount), sgt(delta1, 0)) {
+                                revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                            }
                         }
                     }
                     let delta0 := sar(128, update)
@@ -562,8 +570,16 @@ object "YulRouter" {
                     }
                 }
                 default {
-                    if or(slt(delta0, 0), sgt(delta0, amount)) {
-                        revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                    switch slt(amount, 0)
+                    case 0 {
+                        if or(slt(delta0, 0), sgt(delta0, amount)) {
+                            revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                        }
+                    }
+                    default {
+                        if or(slt(delta0, amount), sgt(delta0, 0)) {
+                            revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                        }
                     }
                 }
                 let delta1 := signextend(15, update)

@@ -180,7 +180,7 @@ describe("encodeRoute", () => {
     ).toThrow("forwardee or a nonzero pool extension");
   });
 
-  it("restricts partial fills to single-hop exact-input paths", () => {
+  it("restricts partial fills to single-hop paths with nonzero amounts", () => {
     expect(() =>
       encodeRoute({
         specifiedToken: token0,
@@ -195,7 +195,7 @@ describe("encodeRoute", () => {
           },
         ],
       }),
-    ).toThrow("single-hop exact-input");
+    ).not.toThrow();
 
     expect(() =>
       encodeRoute({
@@ -215,7 +215,23 @@ describe("encodeRoute", () => {
           },
         ],
       }),
-    ).toThrow("single-hop exact-input");
+    ).toThrow("single-hop paths with a nonzero specifiedAmount");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 0n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+        ],
+      }),
+    ).toThrow("single-hop paths with a nonzero specifiedAmount");
   });
 
   it("encodes signed exclusive swap hops with signed payload fields", () => {
