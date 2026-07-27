@@ -1,13 +1,17 @@
 import { describe, expect, it } from "bun:test";
+import { decodeFunctionData } from "viem";
 import {
   encodePoolBalanceUpdate,
+  encodeQuoteCalldata,
   encodeRoute,
   encodeRoutes,
   encodeSignedSwapMeta,
   generateCalldata,
+  generateQuoteCalldata,
   MAX_HOP_LENGTH,
   MAX_MULTIHOP_LENGTH,
   MIN_CALCULATED_AMOUNT_THRESHOLD,
+  YUL_ROUTER_ABI,
   YUL_ROUTER_ADDRESS,
 } from "../src/index.js";
 
@@ -17,6 +21,8 @@ const token2 = "0x2222222222222222222222222222222222222222";
 const extension = "0x3333333333333333333333333333333333333333";
 const config =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
+const extensionConfig =
+  "0x3333333333333333333333333333333333333333000000000000000000000000";
 
 describe("encodeSignedSwapMeta", () => {
   it("encodes uint64 bigint nonces above the safe integer range exactly", () => {
@@ -90,6 +96,144 @@ describe("encodeRoute", () => {
     expect(data).toContain("01");
   });
 
+  it("encodes opt-in partial fills in the swap control word", () => {
+    const coreData = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "core",
+          poolKey: { token0, token1, config },
+          skipAhead: 3,
+          allowPartial: true,
+        },
+      ],
+    });
+    const forwardedData = encodeRoute({
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "forwarded",
+          forwardee: extension,
+          poolKey: { token0, token1, config },
+          allowPartial: true,
+        },
+      ],
+    });
+
+    expect(coreData.endsWith("80000003")).toBe(true);
+    expect(forwardedData.endsWith("80000000")).toBe(true);
+  });
+
+  it("defaults forwarded hops to the pool extension", () => {
+    const parameters = {
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "forwarded",
+          poolKey: { token0, token1, config: extensionConfig },
+        },
+      ],
+    } as const;
+    const inferred = encodeRoute(parameters);
+    const explicit = encodeRoute({
+      ...parameters,
+      hops: [{ ...parameters.hops[0], forwardee: extension }],
+    });
+
+    expect(inferred).toBe(explicit);
+  });
+
+  it("requires a nonzero forward target", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [{ type: "forwarded", poolKey: { token0, token1, config } }],
+      }),
+    ).toThrow("forwardee or a nonzero pool extension");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "forwarded",
+            forwardee: "0x0000000000000000000000000000000000000000",
+            poolKey: { token0, token1, config: extensionConfig },
+          },
+        ],
+      }),
+    ).toThrow("forwardee or a nonzero pool extension");
+  });
+
+  it("restricts partial fills to single-hop paths with nonzero amounts", () => {
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: -(1n << 127n),
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+        ],
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token2,
+        specifiedAmount: 1n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+          {
+            type: "core",
+            poolKey: { token0: token1, token1: token2, config },
+          },
+        ],
+      }),
+    ).toThrow("single-hop paths with a nonzero specifiedAmount");
+
+    expect(() =>
+      encodeRoute({
+        specifiedToken: token0,
+        calculatedToken: token1,
+        specifiedAmount: 0n,
+        calculatedAmountThreshold: false,
+        hops: [
+          {
+            type: "core",
+            poolKey: { token0, token1, config },
+            allowPartial: true,
+          },
+        ],
+      }),
+    ).toThrow("single-hop paths with a nonzero specifiedAmount");
+  });
+
   it("encodes signed exclusive swap hops with signed payload fields", () => {
     const meta = encodeSignedSwapMeta({
       authorizedLocker: extension,
@@ -111,8 +255,7 @@ describe("encodeRoute", () => {
       hops: [
         {
           type: "signedExclusiveSwap",
-          forwardee: extension,
-          poolKey: { token0, token1, config },
+          poolKey: { token0, token1, config: extensionConfig },
           meta,
           minBalanceUpdate,
           signature,
@@ -229,6 +372,44 @@ describe("encodeRoute", () => {
         ],
       }),
     ).toThrow("disconnected");
+  });
+});
+
+describe("encodeQuoteCalldata", () => {
+  it("wraps packed routes in the quote(bytes) entrypoint", () => {
+    const parameters = {
+      specifiedToken: token0,
+      calculatedToken: token1,
+      specifiedAmount: 1_000_000n,
+      calculatedAmountThreshold: false,
+      hops: [
+        {
+          type: "core",
+          poolKey: { token0, token1, config },
+          allowPartial: true,
+        },
+      ],
+    } as const;
+    const route = encodeRoute(parameters);
+    const calldata = generateQuoteCalldata({
+      specifiedToken: parameters.specifiedToken,
+      calculatedToken: parameters.calculatedToken,
+      calculatedAmountThreshold: parameters.calculatedAmountThreshold,
+      multiHops: [
+        {
+          specifiedAmount: parameters.specifiedAmount,
+          hops: parameters.hops,
+        },
+      ],
+    });
+    const decoded = decodeFunctionData({
+      abi: YUL_ROUTER_ABI,
+      data: calldata,
+    });
+
+    expect(calldata).toBe(encodeQuoteCalldata(route));
+    expect(decoded.functionName).toBe("quote");
+    expect(decoded.args[0]).toBe(route);
   });
 });
 
