@@ -1,0 +1,13 @@
+{
+  "network": "eth-mainnet",
+  "chainId": "1",
+  "router": "0x7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748",
+  "canonicalCore": "0x00000000000014aA86C5d3c41765bb24e11bd701",
+  "deterministicDeployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "broadcaster": "0x00000C771F6176268D5A9846E0956C3eF58597A1",
+  "blockNumber": "25627290",
+  "verifiedAt": "2026-07-27T22:59:32Z",
+  "deployedNow": false,
+  "transactionHashes": [],
+  "foundryBroadcast": null
+}

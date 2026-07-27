@@ -1,0 +1,15 @@
+{
+  "network": "base-sepolia",
+  "chainId": "84532",
+  "router": "0x7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748",
+  "canonicalCore": "0x00000000000014aA86C5d3c41765bb24e11bd701",
+  "deterministicDeployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "broadcaster": "0x00000C771F6176268D5A9846E0956C3eF58597A1",
+  "blockNumber": "44712449",
+  "verifiedAt": "2026-07-27T22:59:47Z",
+  "deployedNow": true,
+  "transactionHashes": [
+    "0xd37cb28d9adc1b97dd684917e5471d33e7169ffa8c301ecbe3c43593883f2e44"
+  ],
+  "foundryBroadcast": "broadcast/releases/v0.6.0/base-sepolia.foundry.json"
+}
