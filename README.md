@@ -26,7 +26,9 @@ encoded in the route is ignored in forwarded mode because the original locker ow
 callback with a recognized result payload. The public entrypoint catches only that payload and returns
 `(address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount)`. Pool and extension
 state changes are rolled back, no token balance or approval is required, and unrelated route or extension errors are
-bubbled unchanged. The SDK exposes `encodeQuoteCalldata(routeData)` and `generateQuoteCalldata(...)` for this entrypoint.
+bubbled unchanged. Downstream call failures are internally wrapped while crossing the lock callback and unwrapped by the
+public entrypoint, preventing a pool or extension from impersonating the router's result payload. The SDK exposes
+`encodeQuoteCalldata(routeData)` and `generateQuoteCalldata(...)` for this entrypoint.
 
 Direct packed-calldata swaps return the same four-word tuple after settlement. Thus direct execution, forwarding, and
 quoting have byte-for-byte identical result data for the same route and starting state. Amount signs retain the existing

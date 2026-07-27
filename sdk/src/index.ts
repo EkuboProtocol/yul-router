@@ -49,7 +49,7 @@ export interface CoreHop {
   skipAhead?: number;
   /**
    * Accept a partial fill and account for the amount actually swapped.
-   * Only valid for single-hop exact-input paths.
+   * Only valid for single-hop paths with a nonzero specified amount.
    */
   allowPartial?: boolean;
 }
@@ -66,7 +66,7 @@ export interface ForwardedHop {
   skipAhead?: number;
   /**
    * Accept a partial fill and account for the amount actually swapped.
-   * Only valid for single-hop exact-input paths.
+   * Only valid for single-hop paths with a nonzero specified amount.
    */
   allowPartial?: boolean;
 }
