@@ -1,5 +1,5 @@
 import { encodeAbiParameters, getAddress, numberToHex } from "viem";
-import { encodeRoutes } from "../src/index.ts";
+import { encodeQuoteCalldata, encodeRoutes } from "../src/index.ts";
 
 const CHAIN_ID = 1;
 const NATIVE = "0x0000000000000000000000000000000000000000";
@@ -157,6 +157,7 @@ async function buildCase(request) {
     quotedCalculated,
     threshold,
     data,
+    quoteData: encodeQuoteCalldata(data),
   };
 }
 
@@ -175,6 +176,7 @@ process.stdout.write(
           { name: "quotedCalculated", type: "int256" },
           { name: "threshold", type: "int256" },
           { name: "data", type: "bytes" },
+          { name: "quoteData", type: "bytes" },
         ],
       },
     ],

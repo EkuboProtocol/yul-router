@@ -9,6 +9,9 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 /// @notice Raised when calldata generated from a production quote cannot execute on the mainnet fork.
 error ProductionQuoteSwapFailed(string name, bytes reason);
 
+/// @notice Raised when a production route cannot be quoted by the router on the mainnet fork.
+error ProductionRouterQuoteFailed(string name, bytes reason);
+
 /// @title ProductionQuotesIntegration
 /// @notice Fetches production quotes through the local SDK and executes them against canonical mainnet Core.
 contract ProductionQuotesIntegration is Script, StdCheats {
@@ -24,6 +27,7 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         int256 quotedCalculated;
         int256 threshold;
         bytes data;
+        bytes quoteData;
     }
 
     function run() external {
@@ -46,6 +50,10 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         require((quote.quotedCalculated < 0) == exactOutput, "quote sign mismatch");
         require((quote.threshold < 0) == exactOutput, "threshold sign mismatch");
 
+        vm.prank(CALLER);
+        (bool quoteSuccess, bytes memory quoteReturndata) = router.call(quote.quoteData);
+        if (!quoteSuccess) revert ProductionRouterQuoteFailed(quote.name, quoteReturndata);
+
         uint256 fundedInput = exactOutput ? uint256(-quote.threshold) : uint256(quote.specifiedAmount);
         if (quote.inputToken == NATIVE) {
             deal(CALLER, fundedInput);
@@ -62,6 +70,7 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         vm.prank(CALLER);
         (bool success, bytes memory returndata) = router.call{value: callValue}(quote.data);
         if (!success) revert ProductionQuoteSwapFailed(quote.name, returndata);
+        require(keccak256(quoteReturndata) == keccak256(returndata), "quote result differs from swap result");
 
         (address specifiedToken, address calculatedToken, int256 specifiedAmount, int256 calculatedAmount) =
             abi.decode(returndata, (address, address, int256, int256));
@@ -89,6 +98,7 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         }
 
         console2.log("production quote executed", quote.name);
+        console2.log("router quote matched swap result");
         console2.log("input spent", inputSpent);
         console2.log("output received", outputReceived);
     }
