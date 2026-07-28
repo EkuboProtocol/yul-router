@@ -120,6 +120,12 @@ async function buildCase(request) {
     throw new Error(`production quoter returned no route for ${request.name}`);
   }
 
+  const blockNumber = BigInt(quote.block_number);
+  const blockHash = numberToHex(BigInt(quote.block_hash), { size: 32 });
+  if (blockNumber === 0n || BigInt(blockHash) === 0n) {
+    throw new Error(`${request.name}: invalid quote block identity`);
+  }
+
   const exactOutput = request.amount < 0n;
   const specifiedToken = exactOutput ? request.outputToken : request.inputToken;
   const calculatedToken = exactOutput ? request.inputToken : request.outputToken;
@@ -151,6 +157,7 @@ async function buildCase(request) {
 
   return {
     name: request.name,
+    blockIdentity: { number: blockNumber, hash: blockHash },
     inputToken: request.inputToken,
     outputToken: request.outputToken,
     specifiedAmount,
@@ -170,6 +177,14 @@ process.stdout.write(
         type: "tuple[]",
         components: [
           { name: "name", type: "string" },
+          {
+            name: "blockIdentity",
+            type: "tuple",
+            components: [
+              { name: "number", type: "uint256" },
+              { name: "hash", type: "bytes32" },
+            ],
+          },
           { name: "inputToken", type: "address" },
           { name: "outputToken", type: "address" },
           { name: "specifiedAmount", type: "int256" },

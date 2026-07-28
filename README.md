@@ -152,8 +152,10 @@ one address emitted by this all-chain verification is written to the SDK.
 ## Production quote integration
 
 CI requests live mainnet quotes from `https://prod-api-quoter.ekubo.org`, converts every split and hop to router
-calldata with this repository's SDK, deploys the router locally, and executes the calldata against canonical Ekubo Core
-on a mainnet fork. The cases cover ETH to ERC20, ERC20 to ETH, exact output, and ERC20 to ERC20 swaps.
+calldata with this repository's SDK, and executes the calldata against canonical Ekubo Core at the exact block
+identified by each quote's block number and hash. It also checks that the router's calculated amount differs from the
+production quote by no more than 0.1%. The cases cover ETH to ERC20, ERC20 to ETH, exact output, and ERC20 to ERC20
+swaps.
 
 The CI job uses `https://ethereum-rpc.publicnode.com` by default. Set the `MAINNET_RPC_URL` repository secret to use a
 dedicated endpoint. Run the same check locally with:
@@ -161,5 +163,7 @@ dedicated endpoint. Run the same check locally with:
 ```sh
 cd sdk && bun install --frozen-lockfile && cd ..
 forge build
-forge script script/ProductionQuotesIntegration.s.sol --fork-url "${MAINNET_RPC_URL:-https://ethereum-rpc.publicnode.com}" -vvv
+forge script script/ProductionQuotesIntegration.s.sol -vvv
 ```
+
+The script uses `MAINNET_RPC_URL` when set and otherwise falls back to `https://ethereum-rpc.publicnode.com`.

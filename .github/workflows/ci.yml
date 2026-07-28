@@ -92,5 +92,5 @@ jobs:
         working-directory: yul-router
 
       - name: Execute production quotes on a mainnet fork
-        run: forge script script/ProductionQuotesIntegration.s.sol --fork-url "$MAINNET_RPC_URL" -vvv
+        run: forge script script/ProductionQuotesIntegration.s.sol -vvv
         working-directory: yul-router

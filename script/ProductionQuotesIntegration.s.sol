@@ -18,9 +18,16 @@ contract ProductionQuotesIntegration is Script, StdCheats {
     address payable private constant CORE = payable(0x00000000000014aA86C5d3c41765bb24e11bd701);
     address private constant NATIVE = address(0);
     address private constant CALLER = 0x000000000000000000000000000000000000bEEF;
+    string private constant DEFAULT_MAINNET_RPC_URL = "https://ethereum-rpc.publicnode.com";
+
+    struct BlockIdentity {
+        uint256 number;
+        bytes32 hash;
+    }
 
     struct QuoteCase {
         string name;
+        BlockIdentity blockIdentity;
         address inputToken;
         address outputToken;
         int256 specifiedAmount;
@@ -31,18 +38,26 @@ contract ProductionQuotesIntegration is Script, StdCheats {
     }
 
     function run() external {
-        require(block.chainid == 1, "mainnet fork required");
-        require(CORE.code.length != 0, "canonical Core is not deployed");
-
-        address router = _deployRouter();
         QuoteCase[] memory cases = _productionQuoteCases();
         require(cases.length >= 4, "not enough production quote cases");
+        string memory mainnetRpcUrl = vm.envOr("MAINNET_RPC_URL", DEFAULT_MAINNET_RPC_URL);
 
         for (uint256 i = 0; i < cases.length; i++) {
-            uint256 state = vm.snapshotState();
+            _selectQuoteFork(mainnetRpcUrl, cases[i]);
+            address router = _deployRouter();
             _execute(router, cases[i]);
-            require(vm.revertToState(state), "failed to restore fork state");
         }
+    }
+
+    function _selectQuoteFork(string memory mainnetRpcUrl, QuoteCase memory quote) private {
+        vm.createSelectFork(mainnetRpcUrl, quote.blockIdentity.number);
+        require(block.chainid == 1, "mainnet fork required");
+        require(block.number == quote.blockIdentity.number, "quote block number mismatch");
+        require(
+            keccak256(vm.getRawBlockHeader(quote.blockIdentity.number)) == quote.blockIdentity.hash,
+            "quote block hash mismatch"
+        );
+        require(CORE.code.length != 0, "canonical Core is not deployed");
     }
 
     function _execute(address router, QuoteCase memory quote) private {
@@ -77,6 +92,12 @@ contract ProductionQuotesIntegration is Script, StdCheats {
         require(specifiedToken == (exactOutput ? quote.outputToken : quote.inputToken), "specified token mismatch");
         require(calculatedToken == (exactOutput ? quote.inputToken : quote.outputToken), "calculated token mismatch");
         require(specifiedAmount == quote.specifiedAmount, "specified amount mismatch");
+        vm.assertApproxEqRel(
+            calculatedAmount,
+            quote.quotedCalculated,
+            1e15,
+            "calculated amount differs from production quote by more than 0.1%"
+        );
         uint256 inputSpent = inputBefore - _balance(quote.inputToken);
         uint256 outputReceived = _balance(quote.outputToken) - outputBefore;
 
