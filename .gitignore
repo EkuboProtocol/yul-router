@@ -3,4 +3,6 @@
 /broadcast/
 /sdk/dist/
 /sdk/node_modules/
-
+/mcp/dist/
+/mcp/node_modules/
+/mcp/.wrangler/
