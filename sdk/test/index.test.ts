@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { decodeFunctionData } from "viem";
 import {
+  type EvmQuoterQuoteV1,
   encodePoolBalanceUpdate,
   encodeQuoteCalldata,
   encodeRoute,
@@ -11,6 +12,7 @@ import {
   MAX_HOP_LENGTH,
   MAX_MULTIHOP_LENGTH,
   MIN_CALCULATED_AMOUNT_THRESHOLD,
+  prepareSwapFromQuote,
   YUL_ROUTER_ABI,
   YUL_ROUTER_ADDRESS,
 } from "../src/index.js";
@@ -23,6 +25,179 @@ const config =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
 const extensionConfig =
   "0x3333333333333333333333333333333333333333000000000000000000000000";
+
+function quoterQuote(
+  overrides: Partial<EvmQuoterQuoteV1> = {},
+): EvmQuoterQuoteV1 {
+  return {
+    schema_version: "1",
+    quote_type: "exact_input",
+    token_in: token0,
+    token_out: token1,
+    amount_in: "1000",
+    amount_out: "900",
+    block_number: 123,
+    block_hash: "0x01",
+    estimated_gas_cost: 25_000,
+    price_impact: 0.001,
+    splits: [
+      {
+        amount_specified: "1000",
+        amount_calculated: "900",
+        route: [
+          {
+            swap: {
+              type: "core",
+              pool_key: { token0, token1, config },
+              sqrt_ratio_limit: "0x000000000000000000000000",
+              skip_ahead: 0,
+            },
+          },
+        ],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe("prepareSwapFromQuote", () => {
+  it("prepares native exact-input execution and simulation calldata", () => {
+    const prepared = prepareSwapFromQuote({
+      quote: quoterQuote(),
+      slippageBps: 100,
+      recipient: extension,
+    });
+
+    expect(prepared.quoteType).toBe("exact_input");
+    expect(prepared.minimumAmountOut).toBe(891n);
+    expect(prepared.maximumAmountIn).toBeNull();
+    expect(prepared.calculatedAmountThreshold).toBe(891n);
+    expect(prepared.transaction.value).toBe(1000n);
+    expect(prepared.transaction.to).toBe(YUL_ROUTER_ADDRESS);
+    expect(prepared.approval).toBeNull();
+    expect(prepared.recipient).toBe(extension);
+    expect(prepared.block.number).toBe(123n);
+    expect(prepared.block.hash).toBe(
+      "0x0000000000000000000000000000000000000000000000000000000000000001",
+    );
+
+    const decoded = decodeFunctionData({
+      abi: YUL_ROUTER_ABI,
+      data: prepared.quoteCalldata,
+    });
+    expect(decoded.functionName).toBe("quote");
+    expect(decoded.args[0]).toBe(prepared.route);
+  });
+
+  it("rounds the maximum input up for ERC20 exact-output swaps", () => {
+    const quote = quoterQuote({
+      quote_type: "exact_output",
+      token_in: token1,
+      token_out: token0,
+      amount_in: "201",
+      amount_out: "100",
+      splits: [
+        {
+          amount_specified: "-100",
+          amount_calculated: "-201",
+          route: [
+            {
+              swap: {
+                type: "core",
+                pool_key: { token0, token1, config },
+                sqrt_ratio_limit: "0x000000000000000000000000",
+                skip_ahead: 0,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const prepared = prepareSwapFromQuote({ quote, slippageBps: 50n });
+
+    expect(prepared.minimumAmountOut).toBeNull();
+    expect(prepared.maximumAmountIn).toBe(203n);
+    expect(prepared.calculatedAmountThreshold).toBe(-203n);
+    expect(prepared.transaction.value).toBe(0n);
+    expect(prepared.approval).toEqual({
+      token: token1,
+      spender: YUL_ROUTER_ADDRESS,
+      amount: 203n,
+    });
+  });
+
+  it("maps forwarded quoter nodes through their pool extension", () => {
+    const quote = quoterQuote({
+      splits: [
+        {
+          amount_specified: "1000",
+          amount_calculated: "900",
+          route: [
+            {
+              swap: {
+                type: "forwarded",
+                pool_key: { token0, token1, config: extensionConfig },
+                sqrt_ratio_limit: "0x000000000000000000000000",
+                skip_ahead: 0,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(() => prepareSwapFromQuote({ quote, slippageBps: 1 })).not.toThrow();
+  });
+
+  it("rejects inconsistent quote totals and unsafe slippage", () => {
+    expect(() =>
+      prepareSwapFromQuote({
+        quote: quoterQuote({ amount_out: "901" }),
+        slippageBps: 1,
+      }),
+    ).toThrow("calculated total");
+    expect(() =>
+      prepareSwapFromQuote({ quote: quoterQuote(), slippageBps: 10_001 }),
+    ).toThrow("at most 10000");
+    expect(() =>
+      prepareSwapFromQuote({ quote: quoterQuote(), slippageBps: 0.5 }),
+    ).toThrow("safe integer");
+    expect(() =>
+      prepareSwapFromQuote({
+        quote: quoterQuote({ quote_type: "unsupported" as "exact_input" }),
+        slippageBps: 1,
+      }),
+    ).toThrow("unsupported quote type");
+  });
+
+  it("keeps exact-input dust protection nonzero", () => {
+    const prepared = prepareSwapFromQuote({
+      quote: quoterQuote({
+        amount_in: "1",
+        amount_out: "1",
+        splits: [
+          {
+            amount_specified: "1",
+            amount_calculated: "1",
+            route: [
+              {
+                swap: {
+                  type: "core",
+                  pool_key: { token0, token1, config },
+                  sqrt_ratio_limit: "0x000000000000000000000000",
+                  skip_ahead: 0,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      slippageBps: 10_000,
+    });
+
+    expect(prepared.minimumAmountOut).toBe(1n);
+  });
+});
 
 describe("encodeSignedSwapMeta", () => {
   it("encodes uint64 bigint nonces above the safe integer range exactly", () => {

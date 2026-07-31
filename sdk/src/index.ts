@@ -125,6 +125,86 @@ export interface EncodeRouteParameters {
 
 export type Parameters = EncodeRoutesParameters;
 
+export interface EvmQuoterPoolKey {
+  token0: Address;
+  token1: Address;
+  config: Hex;
+}
+
+export type EvmQuoterRouteNode =
+  | {
+      swap: {
+        type: "core" | "forwarded";
+        pool_key: EvmQuoterPoolKey;
+        sqrt_ratio_limit: Hex;
+        skip_ahead: number;
+      };
+      wrapped_token?: never;
+    }
+  | {
+      wrapped_token: {
+        underlying: Address;
+        wrapped: Address;
+      };
+      swap?: never;
+    };
+
+export interface EvmQuoterQuoteV1 {
+  schema_version: "1";
+  quote_type: "exact_input" | "exact_output";
+  token_in: Address;
+  token_out: Address;
+  amount_in: string;
+  amount_out: string;
+  block_number: number | string | bigint;
+  block_hash: Hex;
+  estimated_gas_cost: number;
+  price_impact: number | null;
+  splits: readonly {
+    amount_specified: string;
+    amount_calculated: string;
+    route: readonly EvmQuoterRouteNode[];
+  }[];
+}
+
+export interface PrepareSwapFromQuoteParameters {
+  quote: EvmQuoterQuoteV1;
+  slippageBps: number | bigint;
+  recipient?: Address;
+  routerAddress?: Address;
+}
+
+export interface PreparedSwap {
+  quoteType: EvmQuoterQuoteV1["quote_type"];
+  tokenIn: Address;
+  tokenOut: Address;
+  amountIn: bigint;
+  amountOut: bigint;
+  minimumAmountOut: bigint | null;
+  maximumAmountIn: bigint | null;
+  calculatedAmountThreshold: bigint;
+  slippageBps: bigint;
+  block: {
+    number: bigint;
+    hash: Hex;
+  };
+  route: Hex;
+  quoteCalldata: Hex;
+  transaction: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  };
+  approval: {
+    token: Address;
+    spender: Address;
+    amount: bigint;
+  } | null;
+  recipient: Address | null;
+  estimatedRouteGas: number;
+  priceImpact: number | null;
+}
+
 export function encodeRoute(params: EncodeRouteParameters): Hex {
   const { specifiedAmount, hops, ...shared } = params;
   return encodeRoutes({
@@ -147,6 +227,225 @@ export function encodeQuoteCalldata(route: Hex): Hex {
 
 export function generateQuoteCalldata(params: EncodeRoutesParameters): Hex {
   return encodeQuoteCalldata(encodeRoutes(params));
+}
+
+/**
+ * Converts a v1 EVM quoter response into validated Yul router calldata.
+ * The result is unsigned and contains both the executable route and calldata
+ * for the router's read-only quote(bytes) simulation entrypoint.
+ */
+export function prepareSwapFromQuote({
+  quote,
+  slippageBps,
+  recipient,
+  routerAddress = YUL_ROUTER_ADDRESS,
+}: PrepareSwapFromQuoteParameters): PreparedSwap {
+  if (quote.schema_version !== "1") {
+    throw new Error(`unsupported quote schema version: ${quote.schema_version}`);
+  }
+  if (
+    quote.quote_type !== "exact_input" &&
+    quote.quote_type !== "exact_output"
+  ) {
+    throw new Error(`unsupported quote type: ${String(quote.quote_type)}`);
+  }
+  if (!Array.isArray(quote.splits) || quote.splits.length === 0) {
+    throw new Error("quote must contain at least one split");
+  }
+  if (
+    !Number.isSafeInteger(quote.estimated_gas_cost) ||
+    quote.estimated_gas_cost < 0
+  ) {
+    throw new Error("estimated_gas_cost must be a nonnegative safe integer");
+  }
+  if (
+    quote.price_impact !== null &&
+    (typeof quote.price_impact !== "number" ||
+      !Number.isFinite(quote.price_impact))
+  ) {
+    throw new Error("price_impact must be a finite number or null");
+  }
+
+  const tokenIn = getAddress(quote.token_in);
+  const tokenOut = getAddress(quote.token_out);
+  if (tokenIn === tokenOut) {
+    throw new Error("quote input and output tokens must differ");
+  }
+
+  const amountIn = parsePositiveRawAmount(quote.amount_in, "amount_in");
+  const amountOut = parsePositiveRawAmount(quote.amount_out, "amount_out");
+  const bps = parseSlippageBps(slippageBps);
+  const isExactOutput = quote.quote_type === "exact_output";
+  const expectedSpecified = isExactOutput ? -amountOut : amountIn;
+  const expectedCalculated = isExactOutput ? -amountIn : amountOut;
+
+  const specifiedTotal = quote.splits.reduce(
+    (total, split) =>
+      total + parseSignedRawAmount(split.amount_specified, "amount_specified"),
+    0n,
+  );
+  const calculatedTotal = quote.splits.reduce(
+    (total, split) =>
+      total + parseSignedRawAmount(split.amount_calculated, "amount_calculated"),
+    0n,
+  );
+  if (specifiedTotal !== expectedSpecified) {
+    throw new Error(
+      `quote split specified total ${specifiedTotal} does not match ${expectedSpecified}`,
+    );
+  }
+  if (calculatedTotal !== expectedCalculated) {
+    throw new Error(
+      `quote split calculated total ${calculatedTotal} does not match ${expectedCalculated}`,
+    );
+  }
+
+  const calculatedAmountThreshold = isExactOutput
+    ? -divideRoundingUp(amountIn * (10_000n + bps), 10_000n)
+    : maxBigInt(1n, (amountOut * 10_000n) / (10_000n + bps));
+  assertInt128(calculatedAmountThreshold, "calculatedAmountThreshold");
+
+  const specifiedToken = isExactOutput ? tokenOut : tokenIn;
+  const calculatedToken = isExactOutput ? tokenIn : tokenOut;
+  const route = encodeRoutes({
+    specifiedToken,
+    calculatedToken,
+    calculatedAmountThreshold,
+    recipient,
+    multiHops: quote.splits.map((split) => ({
+      specifiedAmount: BigInt(split.amount_specified),
+      hops: split.route.map(quoterNodeToHop),
+    })),
+  });
+
+  const router = getAddress(routerAddress);
+  const inputLimit = isExactOutput
+    ? -calculatedAmountThreshold
+    : amountIn;
+  const isNativeInput = hexToBigInt(tokenIn) === 0n;
+
+  return {
+    quoteType: quote.quote_type,
+    tokenIn,
+    tokenOut,
+    amountIn,
+    amountOut,
+    minimumAmountOut: isExactOutput ? null : calculatedAmountThreshold,
+    maximumAmountIn: isExactOutput ? inputLimit : null,
+    calculatedAmountThreshold,
+    slippageBps: bps,
+    block: {
+      number: parseUnsignedRawAmount(quote.block_number, "block_number"),
+      hash: normalizeBlockHash(quote.block_hash),
+    },
+    route,
+    quoteCalldata: encodeQuoteCalldata(route),
+    transaction: {
+      to: router,
+      data: route,
+      value: isNativeInput ? inputLimit : 0n,
+    },
+    approval: isNativeInput
+      ? null
+      : {
+          token: tokenIn,
+          spender: router,
+          amount: inputLimit,
+        },
+    recipient: recipient === undefined ? null : getAddress(recipient),
+    estimatedRouteGas: quote.estimated_gas_cost,
+    priceImpact: quote.price_impact,
+  };
+}
+
+function quoterNodeToHop(node: EvmQuoterRouteNode): Hop {
+  if (node.wrapped_token !== undefined) {
+    return {
+      type: "wrapper",
+      underlying: node.wrapped_token.underlying,
+      wrapped: node.wrapped_token.wrapped,
+    };
+  }
+  if (node.swap === undefined) {
+    throw new Error("unknown EVM quoter route node");
+  }
+
+  const common = {
+    poolKey: node.swap.pool_key,
+    sqrtRatioLimit: BigInt(node.swap.sqrt_ratio_limit),
+    skipAhead: node.swap.skip_ahead,
+  };
+  switch (node.swap.type) {
+    case "core":
+      return { type: "core", ...common };
+    case "forwarded":
+      return { type: "forwarded", ...common };
+    default:
+      throw new Error(
+        `unsupported EVM quoter swap type: ${String(node.swap.type)}`,
+      );
+  }
+}
+
+function parsePositiveRawAmount(value: string, name: string): bigint {
+  const amount = parseSignedRawAmount(value, name);
+  if (amount <= 0n) {
+    throw new Error(`${name} must be greater than zero`);
+  }
+  return amount;
+}
+
+function parseSignedRawAmount(value: string, name: string): bigint {
+  if (!/^-?[0-9]+$/.test(value)) {
+    throw new Error(`${name} must be a base-10 integer string`);
+  }
+  return BigInt(value);
+}
+
+function parseUnsignedRawAmount(
+  value: number | string | bigint,
+  name: string,
+): bigint {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`${name} must be a nonnegative safe integer`);
+    }
+    return BigInt(value);
+  }
+  if (typeof value === "string") {
+    if (!/^[0-9]+$/.test(value)) {
+      throw new Error(`${name} must be a nonnegative base-10 integer`);
+    }
+    return BigInt(value);
+  }
+  if (value < 0n) {
+    throw new Error(`${name} must be nonnegative`);
+  }
+  return value;
+}
+
+function parseSlippageBps(value: number | bigint): bigint {
+  const bps = parseUnsignedRawAmount(value, "slippageBps");
+  if (bps > 10_000n) {
+    throw new Error("slippageBps must be at most 10000");
+  }
+  return bps;
+}
+
+function divideRoundingUp(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - 1n) / denominator;
+}
+
+function maxBigInt(left: bigint, right: bigint): bigint {
+  return left > right ? left : right;
+}
+
+function normalizeBlockHash(hash: Hex): Hex {
+  try {
+    return numberToHex(BigInt(hash), { size: 32 });
+  } catch {
+    throw new Error("block_hash must fit into bytes32");
+  }
 }
 
 export function encodeRoutes(params: EncodeRoutesParameters): Hex {
