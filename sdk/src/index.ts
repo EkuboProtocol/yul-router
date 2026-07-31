@@ -149,15 +149,12 @@ export type EvmQuoterRouteNode =
       swap?: never;
     };
 
-export interface EvmQuoterQuoteV1 {
-  schema_version: "1";
-  quote_type: "exact_input" | "exact_output";
-  token_in: Address;
-  token_out: Address;
-  amount_in: string;
-  amount_out: string;
+export type EvmQuoterQuoteType = "exact_input" | "exact_output";
+
+export interface EvmQuoterQuote {
   block_number: number | string | bigint;
   block_hash: Hex;
+  total_calculated: string;
   estimated_gas_cost: number;
   price_impact: number | null;
   splits: readonly {
@@ -168,14 +165,29 @@ export interface EvmQuoterQuoteV1 {
 }
 
 export interface PrepareSwapFromQuoteParameters {
-  quote: EvmQuoterQuoteV1;
+  quote: EvmQuoterQuote;
+  tokenIn: Address;
+  tokenOut: Address;
+  quoteType: EvmQuoterQuoteType;
+  /** Positive exact-input or exact-output amount in base units. */
+  amount: string | bigint;
   slippageBps: number | bigint;
   recipient?: Address;
   routerAddress?: Address;
 }
 
+export interface BuildQuoterQuoteUrlParameters {
+  quoterUrl: string;
+  chainId: number | string | bigint;
+  tokenIn: Address;
+  tokenOut: Address;
+  quoteType: EvmQuoterQuoteType;
+  /** Positive exact-input or exact-output amount in base units. */
+  amount: string | bigint;
+}
+
 export interface PreparedSwap {
-  quoteType: EvmQuoterQuoteV1["quote_type"];
+  quoteType: EvmQuoterQuoteType;
   tokenIn: Address;
   tokenOut: Address;
   amountIn: bigint;
@@ -230,24 +242,62 @@ export function generateQuoteCalldata(params: EncodeRoutesParameters): Hex {
 }
 
 /**
- * Converts a v1 EVM quoter response into validated Yul router calldata.
+ * Maps explicit swap intent to the quoter's canonical signed-amount URL.
+ */
+export function buildQuoterQuoteUrl({
+  quoterUrl,
+  chainId,
+  tokenIn,
+  tokenOut,
+  quoteType,
+  amount,
+}: BuildQuoterQuoteUrlParameters): string {
+  const chain = parseUnsignedRawAmount(chainId, "chainId");
+  if (chain === 0n) {
+    throw new Error("chainId must be greater than zero");
+  }
+  if (quoteType !== "exact_input" && quoteType !== "exact_output") {
+    throw new Error(`unsupported quote type: ${String(quoteType)}`);
+  }
+
+  const input = getAddress(tokenIn);
+  const output = getAddress(tokenOut);
+  if (input === output) {
+    throw new Error("quote input and output tokens must differ");
+  }
+
+  const positiveAmount = parsePositiveAmount(amount, "amount");
+  const exactOutput = quoteType === "exact_output";
+  const signedAmount = exactOutput ? -positiveAmount : positiveAmount;
+  assertInt128(signedAmount, "signed quote amount");
+  const specifiedToken = exactOutput ? output : input;
+  const otherToken = exactOutput ? input : output;
+  const base = quoterUrl.replace(/\/+$/, "");
+  if (base.length === 0) {
+    throw new Error("quoterUrl must not be empty");
+  }
+
+  return `${base}/${chain}/${signedAmount}/${specifiedToken}/${otherToken}`;
+}
+
+/**
+ * Converts a canonical EVM quoter response and its request intent into
+ * validated Yul router calldata.
  * The result is unsigned and contains both the executable route and calldata
  * for the router's read-only quote(bytes) simulation entrypoint.
  */
 export function prepareSwapFromQuote({
   quote,
+  tokenIn: requestedTokenIn,
+  tokenOut: requestedTokenOut,
+  quoteType,
+  amount,
   slippageBps,
   recipient,
   routerAddress = YUL_ROUTER_ADDRESS,
 }: PrepareSwapFromQuoteParameters): PreparedSwap {
-  if (quote.schema_version !== "1") {
-    throw new Error(`unsupported quote schema version: ${quote.schema_version}`);
-  }
-  if (
-    quote.quote_type !== "exact_input" &&
-    quote.quote_type !== "exact_output"
-  ) {
-    throw new Error(`unsupported quote type: ${String(quote.quote_type)}`);
+  if (quoteType !== "exact_input" && quoteType !== "exact_output") {
+    throw new Error(`unsupported quote type: ${String(quoteType)}`);
   }
   if (!Array.isArray(quote.splits) || quote.splits.length === 0) {
     throw new Error("quote must contain at least one split");
@@ -266,18 +316,29 @@ export function prepareSwapFromQuote({
     throw new Error("price_impact must be a finite number or null");
   }
 
-  const tokenIn = getAddress(quote.token_in);
-  const tokenOut = getAddress(quote.token_out);
+  const tokenIn = getAddress(requestedTokenIn);
+  const tokenOut = getAddress(requestedTokenOut);
   if (tokenIn === tokenOut) {
     throw new Error("quote input and output tokens must differ");
   }
 
-  const amountIn = parsePositiveRawAmount(quote.amount_in, "amount_in");
-  const amountOut = parsePositiveRawAmount(quote.amount_out, "amount_out");
+  const requestedAmount = parsePositiveAmount(amount, "amount");
   const bps = parseSlippageBps(slippageBps);
-  const isExactOutput = quote.quote_type === "exact_output";
-  const expectedSpecified = isExactOutput ? -amountOut : amountIn;
-  const expectedCalculated = isExactOutput ? -amountIn : amountOut;
+  const isExactOutput = quoteType === "exact_output";
+  const expectedSpecified = isExactOutput ? -requestedAmount : requestedAmount;
+  assertInt128(expectedSpecified, "specified amount");
+  const quotedCalculated = parseSignedRawAmount(
+    quote.total_calculated,
+    "total_calculated",
+  );
+  if (
+    quotedCalculated === 0n ||
+    (isExactOutput ? quotedCalculated > 0n : quotedCalculated < 0n)
+  ) {
+    throw new Error("total_calculated has the wrong sign for the quote type");
+  }
+  const amountIn = isExactOutput ? -quotedCalculated : requestedAmount;
+  const amountOut = isExactOutput ? requestedAmount : quotedCalculated;
 
   const specifiedTotal = quote.splits.reduce(
     (total, split) =>
@@ -294,9 +355,9 @@ export function prepareSwapFromQuote({
       `quote split specified total ${specifiedTotal} does not match ${expectedSpecified}`,
     );
   }
-  if (calculatedTotal !== expectedCalculated) {
+  if (calculatedTotal !== quotedCalculated) {
     throw new Error(
-      `quote split calculated total ${calculatedTotal} does not match ${expectedCalculated}`,
+      `quote split calculated total ${calculatedTotal} does not match ${quotedCalculated}`,
     );
   }
 
@@ -325,7 +386,7 @@ export function prepareSwapFromQuote({
   const isNativeInput = hexToBigInt(tokenIn) === 0n;
 
   return {
-    quoteType: quote.quote_type,
+    quoteType,
     tokenIn,
     tokenOut,
     amountIn,
@@ -387,8 +448,9 @@ function quoterNodeToHop(node: EvmQuoterRouteNode): Hop {
   }
 }
 
-function parsePositiveRawAmount(value: string, name: string): bigint {
-  const amount = parseSignedRawAmount(value, name);
+function parsePositiveAmount(value: string | bigint, name: string): bigint {
+  const amount =
+    typeof value === "bigint" ? value : parseSignedRawAmount(value, name);
   if (amount <= 0n) {
     throw new Error(`${name} must be greater than zero`);
   }

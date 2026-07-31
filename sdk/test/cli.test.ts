@@ -27,21 +27,18 @@ const server = Bun.serve({
       const search = url.searchParams.get("search")?.toUpperCase();
       return Response.json(search === "ETH" ? [native] : [usdc]);
     }
-    if (url.pathname === "/1/v1/quote") {
+    const [chainId, amount, specifiedToken, otherToken] = url.pathname
+      .slice(1)
+      .split("/");
+    if (chainId === "1" && amount !== undefined) {
       expect(request.method).toBe("GET");
-      expect(url.searchParams.get("token_in")).toBe(native.address);
-      expect(BigInt(url.searchParams.get("token_out")!)).toBe(BigInt(usdc.address));
-      expect(url.searchParams.get("quote_type")).toBe("exact_input");
-      const amount = url.searchParams.get("amount")!;
+      expect(amount).toBe("100000000000000000");
+      expect(BigInt(specifiedToken!)).toBe(BigInt(native.address));
+      expect(BigInt(otherToken!)).toBe(BigInt(usdc.address));
       return Response.json({
-        schema_version: "1",
-        quote_type: "exact_input",
-        token_in: native.address,
-        token_out: usdc.address,
-        amount_in: amount,
-        amount_out: "200000000",
         block_number: 123,
         block_hash: "0x01",
+        total_calculated: "200000000",
         estimated_gas_cost: 25_000,
         price_impact: 0.001,
         splits: [

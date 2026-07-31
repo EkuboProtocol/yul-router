@@ -96,19 +96,11 @@ async function buildCase(request) {
   }
 
   const prepared = prepareSwapFromQuote({
-    quote: {
-      schema_version: "1",
-      quote_type: exactOutput ? "exact_output" : "exact_input",
-      token_in: request.inputToken,
-      token_out: request.outputToken,
-      amount_in: (exactOutput ? -quotedCalculated : request.amount).toString(),
-      amount_out: (exactOutput ? -request.amount : quotedCalculated).toString(),
-      block_number: quote.block_number,
-      block_hash: quote.block_hash,
-      estimated_gas_cost: quote.estimated_gas_cost,
-      price_impact: quote.price_impact,
-      splits: quote.splits,
-    },
+    quote,
+    tokenIn: request.inputToken,
+    tokenOut: request.outputToken,
+    quoteType: exactOutput ? "exact_output" : "exact_input",
+    amount: exactOutput ? -request.amount : request.amount,
     slippageBps: SLIPPAGE_BPS,
   });
 

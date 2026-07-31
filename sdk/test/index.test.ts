@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { decodeFunctionData } from "viem";
 import {
-  type EvmQuoterQuoteV1,
+  buildQuoterQuoteUrl,
+  type EvmQuoterQuote,
   encodePoolBalanceUpdate,
   encodeQuoteCalldata,
   encodeRoute,
@@ -27,17 +28,12 @@ const extensionConfig =
   "0x3333333333333333333333333333333333333333000000000000000000000000";
 
 function quoterQuote(
-  overrides: Partial<EvmQuoterQuoteV1> = {},
-): EvmQuoterQuoteV1 {
+  overrides: Partial<EvmQuoterQuote> = {},
+): EvmQuoterQuote {
   return {
-    schema_version: "1",
-    quote_type: "exact_input",
-    token_in: token0,
-    token_out: token1,
-    amount_in: "1000",
-    amount_out: "900",
     block_number: 123,
     block_hash: "0x01",
+    total_calculated: "900",
     estimated_gas_cost: 25_000,
     price_impact: 0.001,
     splits: [
@@ -60,10 +56,44 @@ function quoterQuote(
   };
 }
 
+const exactInputIntent = {
+  tokenIn: token0,
+  tokenOut: token1,
+  quoteType: "exact_input" as const,
+  amount: 1000n,
+};
+
+describe("buildQuoterQuoteUrl", () => {
+  it("maps explicit exact-input and exact-output intent to signed paths", () => {
+    expect(
+      buildQuoterQuoteUrl({
+        quoterUrl: "https://prod-api-quoter.ekubo.org/",
+        chainId: 1,
+        ...exactInputIntent,
+      }),
+    ).toBe(
+      `https://prod-api-quoter.ekubo.org/1/1000/${token0}/${token1}`,
+    );
+    expect(
+      buildQuoterQuoteUrl({
+        quoterUrl: "https://prod-api-quoter.ekubo.org",
+        chainId: "1",
+        tokenIn: token1,
+        tokenOut: token0,
+        quoteType: "exact_output",
+        amount: "100",
+      }),
+    ).toBe(
+      `https://prod-api-quoter.ekubo.org/1/-100/${token0}/${token1}`,
+    );
+  });
+});
+
 describe("prepareSwapFromQuote", () => {
   it("prepares native exact-input execution and simulation calldata", () => {
     const prepared = prepareSwapFromQuote({
       quote: quoterQuote(),
+      ...exactInputIntent,
       slippageBps: 100,
       recipient: extension,
     });
@@ -91,11 +121,7 @@ describe("prepareSwapFromQuote", () => {
 
   it("rounds the maximum input up for ERC20 exact-output swaps", () => {
     const quote = quoterQuote({
-      quote_type: "exact_output",
-      token_in: token1,
-      token_out: token0,
-      amount_in: "201",
-      amount_out: "100",
+      total_calculated: "-201",
       splits: [
         {
           amount_specified: "-100",
@@ -113,7 +139,14 @@ describe("prepareSwapFromQuote", () => {
         },
       ],
     });
-    const prepared = prepareSwapFromQuote({ quote, slippageBps: 50n });
+    const prepared = prepareSwapFromQuote({
+      quote,
+      tokenIn: token1,
+      tokenOut: token0,
+      quoteType: "exact_output",
+      amount: 100n,
+      slippageBps: 50n,
+    });
 
     expect(prepared.minimumAmountOut).toBeNull();
     expect(prepared.maximumAmountIn).toBe(203n);
@@ -146,25 +179,38 @@ describe("prepareSwapFromQuote", () => {
       ],
     });
 
-    expect(() => prepareSwapFromQuote({ quote, slippageBps: 1 })).not.toThrow();
+    expect(() =>
+      prepareSwapFromQuote({ quote, ...exactInputIntent, slippageBps: 1 }),
+    ).not.toThrow();
   });
 
   it("rejects inconsistent quote totals and unsafe slippage", () => {
     expect(() =>
       prepareSwapFromQuote({
-        quote: quoterQuote({ amount_out: "901" }),
+        quote: quoterQuote({ total_calculated: "901" }),
+        ...exactInputIntent,
         slippageBps: 1,
       }),
     ).toThrow("calculated total");
     expect(() =>
-      prepareSwapFromQuote({ quote: quoterQuote(), slippageBps: 10_001 }),
+      prepareSwapFromQuote({
+        quote: quoterQuote(),
+        ...exactInputIntent,
+        slippageBps: 10_001,
+      }),
     ).toThrow("at most 10000");
     expect(() =>
-      prepareSwapFromQuote({ quote: quoterQuote(), slippageBps: 0.5 }),
+      prepareSwapFromQuote({
+        quote: quoterQuote(),
+        ...exactInputIntent,
+        slippageBps: 0.5,
+      }),
     ).toThrow("safe integer");
     expect(() =>
       prepareSwapFromQuote({
-        quote: quoterQuote({ quote_type: "unsupported" as "exact_input" }),
+        quote: quoterQuote(),
+        ...exactInputIntent,
+        quoteType: "unsupported" as "exact_input",
         slippageBps: 1,
       }),
     ).toThrow("unsupported quote type");
@@ -173,8 +219,7 @@ describe("prepareSwapFromQuote", () => {
   it("keeps exact-input dust protection nonzero", () => {
     const prepared = prepareSwapFromQuote({
       quote: quoterQuote({
-        amount_in: "1",
-        amount_out: "1",
+        total_calculated: "1",
         splits: [
           {
             amount_specified: "1",
@@ -192,6 +237,10 @@ describe("prepareSwapFromQuote", () => {
           },
         ],
       }),
+      tokenIn: token0,
+      tokenOut: token1,
+      quoteType: "exact_input",
+      amount: 1n,
       slippageBps: 10_000,
     });
 

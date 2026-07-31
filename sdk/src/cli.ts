@@ -14,7 +14,8 @@ import {
   stringToHex,
 } from "viem";
 import {
-  type EvmQuoterQuoteV1,
+  buildQuoterQuoteUrl,
+  type EvmQuoterQuote,
   prepareSwapFromQuote,
   YUL_ROUTER_ABI,
 } from "./index.js";
@@ -112,6 +113,10 @@ async function main() {
   try {
     prepared = prepareSwapFromQuote({
       quote,
+      tokenIn: tokenIn.address,
+      tokenOut: tokenOut.address,
+      quoteType: args.quoteType,
+      amount: amountRaw,
       slippageBps: args.slippageBps,
       recipient: args.recipient,
     });
@@ -119,28 +124,6 @@ async function main() {
     throw new CliError(
       "invalid_quote_response",
       error instanceof Error ? error.message : String(error),
-    );
-  }
-  if (
-    prepared.quoteType !== args.quoteType ||
-    prepared.tokenIn !== tokenIn.address ||
-    prepared.tokenOut !== tokenOut.address
-  ) {
-    throw new CliError(
-      "quote_response_mismatch",
-      "Quoter response does not match the requested direction or tokens",
-      {
-        requested: {
-          quote_type: args.quoteType,
-          token_in: tokenIn.address,
-          token_out: tokenOut.address,
-        },
-        received: {
-          quote_type: prepared.quoteType,
-          token_in: prepared.tokenIn,
-          token_out: prepared.tokenOut,
-        },
-      },
     );
   }
   const simulation = args.rpcUrl
@@ -448,15 +431,16 @@ async function fetchQuote(
   tokenIn: TokenInfo,
   tokenOut: TokenInfo,
   amountRaw: bigint,
-): Promise<EvmQuoterQuoteV1> {
-  const url = new URL(
-    `${args.quoterUrl}/${encodeURIComponent(args.chainId)}/v1/quote`,
-  );
-  url.searchParams.set("token_in", tokenIn.address);
-  url.searchParams.set("token_out", tokenOut.address);
-  url.searchParams.set("quote_type", args.quoteType);
-  url.searchParams.set("amount", amountRaw.toString());
-  return fetchJson<EvmQuoterQuoteV1>(url.toString(), {
+): Promise<EvmQuoterQuote> {
+  const url = buildQuoterQuoteUrl({
+    quoterUrl: args.quoterUrl,
+    chainId: args.chainId,
+    tokenIn: tokenIn.address,
+    tokenOut: tokenOut.address,
+    quoteType: args.quoteType,
+    amount: amountRaw,
+  });
+  return fetchJson<EvmQuoterQuote>(url, {
     headers: { accept: "application/json" },
   });
 }
