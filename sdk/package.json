@@ -7,9 +7,15 @@
     "directory": "sdk"
   },
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ekubo-swap": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,18 +25,20 @@
   },
   "files": [
     "dist/index.js",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/cli.js"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate-foundry-testdata": "bun scripts/generate-foundry-testdata.mjs",
     "prepublishOnly": "bun run build && bun run test",
-    "test": "bun test test/index.test.ts"
+    "test": "bun test test && node dist/cli.js --help"
   },
   "peerDependencies": {
     "viem": "^2.31.7"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "typescript": "^5.8.3",
     "viem": "^2.31.7"
   }

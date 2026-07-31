@@ -67,6 +67,77 @@ The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment add
 
 `encodeRoute(...)` remains as a convenience wrapper for a single multi-hop path.
 
+### Preparing a swap from the public quoter
+
+`buildQuoterQuoteUrl(...)` maps explicit input/output intent to the public
+quoter's canonical signed-amount path. `prepareSwapFromQuote(...)` validates
+that response against the same intent, computes the slippage threshold,
+converts every route node, and returns:
+
+- unsigned router transaction calldata and native value
+- exact ERC20 approval requirements when the input is not native
+- positive minimum-output or maximum-input values for confirmation
+- `quote(bytes)` calldata for read-only simulation at the quote block
+- normalized block identity, route gas estimate, and price impact
+
+```ts
+import {
+  buildQuoterQuoteUrl,
+  prepareSwapFromQuote,
+} from "@ekubo/yul-router-sdk";
+
+const intent = {
+  tokenIn,
+  tokenOut,
+  quoteType: "exact_input" as const,
+  amount: 100000000000000000n,
+};
+const quoteResponse = await fetch(
+  buildQuoterQuoteUrl({
+    quoterUrl: "https://prod-api-quoter.ekubo.org",
+    chainId: 1,
+    ...intent,
+  }),
+);
+
+const prepared = prepareSwapFromQuote({
+  quote: await quoteResponse.json(),
+  ...intent,
+  slippageBps: 25,
+  recipient: account,
+});
+
+// Simulate prepared.quoteCalldata against prepared.transaction.to at
+// prepared.block.hash, then ask the user to confirm prepared.transaction.
+```
+
+Changing the slippage tolerance changes the protected calldata. Prepare and
+simulate a new plan before asking the user to confirm it.
+
+The package also installs a non-signing `ekubo-swap` CLI for agents and other
+automation. It resolves tokens through the public token list, requests a quote
+through the canonical signed-amount path, prepares calldata, optionally
+simulates at the quote block, and emits a JSON confirmation object with a
+stable plan ID:
+
+```sh
+ekubo-swap prepare \
+  --chain-id 1 \
+  --token-in ETH \
+  --token-out USDC \
+  --type exact-input \
+  --amount 0.1 \
+  --slippage-bps 25 \
+  --sender 0x... \
+  --rpc-url https://...
+```
+
+Without an RPC URL the plan is marked as not simulated. With an RPC URL the
+CLI verifies the quote block hash and simulates `quote(bytes)`; when a sender
+is supplied it additionally checks balance, allowance, and the exact unsigned
+transaction. It never signs or submits a transaction. Ambiguous token symbols
+are rejected with candidate addresses instead of being guessed.
+
 Supported hop types:
 
 - `core`: direct `Core.swap_6269342730()` using the provided pool key. This works for arbitrary pools whose extension

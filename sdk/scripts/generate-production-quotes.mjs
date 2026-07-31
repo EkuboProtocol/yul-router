@@ -1,5 +1,5 @@
-import { encodeAbiParameters, getAddress, numberToHex } from "viem";
-import { encodeQuoteCalldata, encodeRoutes } from "../src/index.ts";
+import { encodeAbiParameters, numberToHex } from "viem";
+import { prepareSwapFromQuote } from "../src/index.ts";
 
 const CHAIN_ID = 1;
 const NATIVE = "0x0000000000000000000000000000000000000000";
@@ -7,7 +7,6 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WBTC = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 const QUOTER_URL =
   process.env.EKUBO_QUOTER_URL ?? "https://prod-api-quoter.ekubo.org";
-const SLIPPAGE_DENOMINATOR = 10_000n;
 const SLIPPAGE_BPS = 500n;
 
 const requests = [
@@ -68,52 +67,6 @@ async function fetchQuote(request) {
   throw new Error(`quote request failed for ${request.name}: ${lastError}`);
 }
 
-function extensionFromConfig(config) {
-  return getAddress(numberToHex(BigInt(config) >> 96n, { size: 20 }));
-}
-
-function toSdkHop(node) {
-  if (node.wrapped_token !== undefined) {
-    return {
-      type: "wrapper",
-      underlying: node.wrapped_token.underlying,
-      wrapped: node.wrapped_token.wrapped,
-    };
-  }
-
-  if (node.swap === undefined) throw new Error("unknown quote route node");
-
-  const {
-    type,
-    pool_key: poolKey,
-    sqrt_ratio_limit: sqrtRatioLimit,
-    skip_ahead: skipAhead,
-  } = node.swap;
-  const common = {
-    poolKey,
-    sqrtRatioLimit: BigInt(sqrtRatioLimit),
-    skipAhead,
-  };
-
-  if (type === "core") return { type, ...common };
-  if (type === "forwarded") {
-    return {
-      type,
-      forwardee: extensionFromConfig(poolKey.config),
-      ...common,
-    };
-  }
-  throw new Error(`unsupported quote swap type: ${type}`);
-}
-
-function calculatedAmountThreshold(totalCalculated) {
-  return totalCalculated < 0n
-    ? (totalCalculated * (SLIPPAGE_DENOMINATOR + SLIPPAGE_BPS)) /
-        SLIPPAGE_DENOMINATOR
-    : (totalCalculated * SLIPPAGE_DENOMINATOR) /
-        (SLIPPAGE_DENOMINATOR + SLIPPAGE_BPS);
-}
-
 async function buildCase(request) {
   const quote = await fetchQuote(request);
   if (!Array.isArray(quote.splits) || quote.splits.length === 0) {
@@ -127,14 +80,11 @@ async function buildCase(request) {
   }
 
   const exactOutput = request.amount < 0n;
-  const specifiedToken = exactOutput ? request.outputToken : request.inputToken;
-  const calculatedToken = exactOutput ? request.inputToken : request.outputToken;
   const specifiedAmount = quote.splits.reduce(
     (sum, split) => sum + BigInt(split.amount_specified),
     0n,
   );
   const quotedCalculated = BigInt(quote.total_calculated);
-  const threshold = calculatedAmountThreshold(quotedCalculated);
 
   if (specifiedAmount !== request.amount) {
     throw new Error(
@@ -145,14 +95,13 @@ async function buildCase(request) {
     throw new Error(`${request.name}: invalid total_calculated sign`);
   }
 
-  const data = encodeRoutes({
-    specifiedToken,
-    calculatedToken,
-    calculatedAmountThreshold: threshold,
-    multiHops: quote.splits.map((split) => ({
-      specifiedAmount: BigInt(split.amount_specified),
-      hops: split.route.map(toSdkHop),
-    })),
+  const prepared = prepareSwapFromQuote({
+    quote,
+    tokenIn: request.inputToken,
+    tokenOut: request.outputToken,
+    quoteType: exactOutput ? "exact_output" : "exact_input",
+    amount: exactOutput ? -request.amount : request.amount,
+    slippageBps: SLIPPAGE_BPS,
   });
 
   return {
@@ -162,9 +111,9 @@ async function buildCase(request) {
     outputToken: request.outputToken,
     specifiedAmount,
     quotedCalculated,
-    threshold,
-    data,
-    quoteData: encodeQuoteCalldata(data),
+    threshold: prepared.calculatedAmountThreshold,
+    data: prepared.route,
+    quoteData: prepared.quoteCalldata,
   };
 }
 
