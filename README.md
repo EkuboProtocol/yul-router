@@ -138,19 +138,6 @@ is supplied it additionally checks balance, allowance, and the exact unsigned
 transaction. It never signs or submits a transaction. Ambiguous token symbols
 are rejected with candidate addresses instead of being guessed.
 
-### Public MCP Worker
-
-The [`mcp`](./mcp) package deploys an independent, stateless Cloudflare Worker
-at `https://mcp.ekubo.org/mcp`. It exposes the token list, canonical quoter,
-this SDK's calldata preparation, and optional block-pinned simulation as typed
-read-only MCP tools. `GET /`, `GET /tools`, `GET /openapi.json`, and
-`GET /llms.txt` make the same service easy to discover without an MCP client.
-
-The Worker is public and unauthenticated, but it never signs or submits a
-transaction. It accepts no caller-selected upstream or RPC URLs. A prepared
-plan requires successful simulation before `confirmation_ready` becomes true,
-and every plan still requires explicit user confirmation.
-
 Supported hop types:
 
 - `core`: direct `Core.swap_6269342730()` using the provided pool key. This works for arbitrary pools whose extension
