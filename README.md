@@ -70,9 +70,10 @@ The SDK exports `YUL_ROUTER_ADDRESS` for the deterministic router deployment add
 ### Preparing a swap from the public quoter
 
 `prepareSwapFromQuote(...)` is the canonical adapter for EVM responses from
-`POST https://prod-api-quoter.ekubo.org/{chainId}/v1/quote`. It validates the
-signed split totals, computes the slippage threshold, converts every route node,
-and returns:
+`GET https://prod-api-quoter.ekubo.org/{chainId}/v1/quote` with explicit
+`token_in`, `token_out`, `quote_type`, and `amount` query parameters. It
+validates the signed split totals, computes the slippage threshold, converts
+every route node, and returns:
 
 - unsigned router transaction calldata and native value
 - exact ERC20 approval requirements when the input is not native

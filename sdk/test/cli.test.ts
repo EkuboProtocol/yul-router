@@ -28,15 +28,17 @@ const server = Bun.serve({
       return Response.json(search === "ETH" ? [native] : [usdc]);
     }
     if (url.pathname === "/1/v1/quote") {
-      const body = (await request.json()) as {
-        amount: { raw: string };
-      };
+      expect(request.method).toBe("GET");
+      expect(url.searchParams.get("token_in")).toBe(native.address);
+      expect(BigInt(url.searchParams.get("token_out")!)).toBe(BigInt(usdc.address));
+      expect(url.searchParams.get("quote_type")).toBe("exact_input");
+      const amount = url.searchParams.get("amount")!;
       return Response.json({
         schema_version: "1",
         quote_type: "exact_input",
         token_in: native.address,
         token_out: usdc.address,
-        amount_in: body.amount.raw,
+        amount_in: amount,
         amount_out: "200000000",
         block_number: 123,
         block_hash: "0x01",
@@ -44,7 +46,7 @@ const server = Bun.serve({
         price_impact: 0.001,
         splits: [
           {
-            amount_specified: body.amount.raw,
+            amount_specified: amount,
             amount_calculated: "200000000",
             route: [
               {

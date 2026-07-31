@@ -449,18 +449,16 @@ async function fetchQuote(
   tokenOut: TokenInfo,
   amountRaw: bigint,
 ): Promise<EvmQuoterQuoteV1> {
-  return fetchJson<EvmQuoterQuoteV1>(
+  const url = new URL(
     `${args.quoterUrl}/${encodeURIComponent(args.chainId)}/v1/quote`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({
-        token_in: tokenIn.address,
-        token_out: tokenOut.address,
-        amount: { type: args.quoteType, raw: amountRaw.toString() },
-      }),
-    },
   );
+  url.searchParams.set("token_in", tokenIn.address);
+  url.searchParams.set("token_out", tokenOut.address);
+  url.searchParams.set("quote_type", args.quoteType);
+  url.searchParams.set("amount", amountRaw.toString());
+  return fetchJson<EvmQuoterQuoteV1>(url.toString(), {
+    headers: { accept: "application/json" },
+  });
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
