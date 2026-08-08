@@ -1,6 +1,6 @@
 {
   "name": "@ekubo/yul-router-sdk",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Constructs swap transaction calldata and price quotation calldata for the Ekubo Yul Router on EVM chains",
   "keywords": [
     "ekubo",
