@@ -64,6 +64,19 @@ rpc_url_for() {
   printf '%s' "$rpc_url"
 }
 
+# Percent multiplier Foundry applies to its own gas estimate before sending.
+gas_estimate_multiplier_for() {
+  case "$1" in
+    # MegaETH charges far more intrinsic gas for this deployment than Foundry
+    # simulates, and rejects the default-padded limit as "intrinsic gas too low":
+    # its own eth_estimateGas asks for about 31M where Foundry estimates 720k.
+    # Its block gas limit is in the billions, so the padding costs nothing beyond
+    # the gas the deployment actually burns.
+    megaeth-mainnet | megaeth-testnet) printf '8000' ;;
+    *) printf '130' ;;
+  esac
+}
+
 offline_output="$(forge script script/DeployYulRouter.s.sol --sig "run()" --offline)"
 expected_routers=()
 while IFS= read -r address; do
@@ -153,6 +166,7 @@ for index in "${!networks[@]}"; do
     --private-key "$DEPLOYER_PRIVATE_KEY" \
     --non-interactive \
     --slow \
+    --gas-estimate-multiplier "$(gas_estimate_multiplier_for "$network")" \
     -vv 2>&1 | tee "$deploy_output"
   forge_status="${PIPESTATUS[0]}"
   set -e
