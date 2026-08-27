@@ -40,12 +40,16 @@
     "build": "tsc -p tsconfig.json",
     "generate-foundry-testdata": "bun scripts/generate-foundry-testdata.mjs",
     "prepublishOnly": "bun run build && bun run test",
-    "test": "bun test test/index.test.ts"
+    "test": "bun test test/index.test.ts",
+    "lint": "eslint .",
+    "lint:prune": "eslint . --prune-suppressions"
   },
   "peerDependencies": {
     "viem": "^2.31.7"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "8.68.0",
+    "eslint": "10.9.1",
     "typescript": "^5.8.3",
     "viem": "^2.31.7"
   }
