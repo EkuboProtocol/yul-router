@@ -543,6 +543,60 @@ contract YulRouterTest is Test {
         assertEq(forwardResult, quoteResult, "forward and quote result");
     }
 
+    function testFuzz_RouteModesAgree(uint128 rawAmount, uint8 flags, bool reverse, bool exactOutput, bool forwardedHop)
+        external
+    {
+        int128 amount = int128(uint128(bound(rawAmount, 1, POSITION_AMOUNT / 1000)));
+        address specified = reverse ? TOKEN1 : TOKEN0;
+        address calculated = reverse ? TOKEN0 : TOKEN1;
+        address forwardee = forwardedHop ? address(new SwapForwardee(CORE)) : address(0);
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this),
+            bytes1(forwardedHop ? uint8(1) : uint8(0)),
+            forwardee,
+            _poolKey(),
+            specified,
+            calculated,
+            exactOutput ? type(int128).min : int128(0),
+            exactOutput ? -amount : amount
+        );
+        if (flags & 1 == 0) {
+            bytes memory withoutRecipient = new bytes(data.length - 20);
+            for (uint256 i; i < withoutRecipient.length; ++i) {
+                withoutRecipient[i] = data[i < 58 ? i : i + 20];
+            }
+            data = withoutRecipient;
+        }
+        data[0] = bytes1(flags);
+
+        deal(TOKEN0, address(this), POSITION_AMOUNT);
+        deal(TOKEN1, address(this), POSITION_AMOUNT);
+        IERC20(TOKEN0).approve(router, POSITION_AMOUNT);
+        IERC20(TOKEN1).approve(router, POSITION_AMOUNT);
+        (bool quoteSuccess, bytes memory quoteResult) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(quoteSuccess, "quote call");
+        uint256 state = vm.snapshotState();
+        (bool directSuccess, bytes memory directResult) = router.call(data);
+        assertTrue(directSuccess, "direct call");
+        assertEq(directResult, quoteResult, "direct and quote result");
+        uint256 balance0 = IERC20(TOKEN0).balanceOf(address(this));
+        uint256 balance1 = IERC20(TOKEN1).balanceOf(address(this));
+        bytes32 poolState = PoolState.unwrap(CORE.poolState(_poolKey().toPoolId()));
+
+        assertTrue(vm.revertToState(state), "restore state");
+        forwardTarget = router;
+        forwardData = data;
+        CORE.lock();
+        assertEq(
+            abi.encode(forwardSpecifiedToken, forwardCalculatedToken, forwardSpecifiedAmount, forwardCalculatedAmount),
+            quoteResult,
+            "forward and quote result"
+        );
+        assertEq(IERC20(TOKEN0).balanceOf(address(this)), balance0, "token0 balance");
+        assertEq(IERC20(TOKEN1).balanceOf(address(this)), balance1, "token1 balance");
+        assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), poolState, "pool state");
+    }
+
     function testRevert_QuoteBubblesRouteErrors() external {
         bytes memory data = _encodeSwapRouteWithAmounts(
             address(this),
@@ -1098,6 +1152,70 @@ contract YulRouterTest is Test {
             assertEq(IERC20(TOKEN1).balanceOf(payer), balanceBefore, "payer balance");
             assertEq(IERC20(TOKEN1).allowance(payer, router), allowanceBefore, "payer allowance");
         }
+    }
+
+    function test_MaximumPathCount() external {
+        bytes memory data =
+            abi.encodePacked(bytes1(0), bytes1(uint8(255)), bytes20(TOKEN0), bytes20(TOKEN1), bytes16(0));
+        bytes memory path = bytes.concat(bytes16(0), bytes1(0), _encodeSwapHop(bytes1(0), address(0), _poolKey()));
+        for (uint256 i; i < 256; ++i) {
+            data = bytes.concat(data, path);
+        }
+        (bool success, bytes memory result) = router.call(data);
+        assertTrue(success, "256 paths");
+        assertEq(result, abi.encode(TOKEN0, TOKEN1, int256(0), int256(0)), "zero result");
+    }
+
+    function test_MaximumHopCount() external {
+        bytes memory data = abi.encodePacked(
+            bytes1(0), bytes1(0), bytes20(TOKEN0), bytes20(TOKEN0), bytes16(0), bytes16(0), bytes1(uint8(255))
+        );
+        bytes memory hop = abi.encodePacked(bytes1(uint8(2)), bytes20(TOKEN0), bytes20(WRAPPED_TOKEN0));
+        for (uint256 i; i < 256; ++i) {
+            data = bytes.concat(data, hop);
+        }
+        (bool success, bytes memory result) = router.call(data);
+        assertTrue(success, "256 hops");
+        assertEq(result, abi.encode(TOKEN0, TOKEN0, int256(0), int256(0)), "zero result");
+    }
+
+    function testFuzz_ZeroPathsPreserveExactness(bool exactOutput, uint8 zeroPaths, bool zeroFirst) external {
+        zeroPaths = uint8(bound(zeroPaths, 1, 4));
+        int128 amount = exactOutput ? -int128(SWAP_AMOUNT) : int128(SWAP_AMOUNT);
+        bytes memory single = _encodeSwapRouteWithAmounts(
+            address(this),
+            bytes1(0),
+            address(0),
+            _poolKey(),
+            TOKEN0,
+            TOKEN1,
+            exactOutput ? type(int128).min : int128(0),
+            amount
+        );
+        (bool singleSuccess, bytes memory singleResult) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, single));
+        assertTrue(singleSuccess, "single quote");
+        bytes memory path =
+            bytes.concat(bytes16(_encodeInt128(amount)), bytes1(0), _encodeSwapHop(bytes1(0), address(0), _poolKey()));
+        bytes memory zeroPath = bytes.concat(bytes16(0), bytes1(0), _encodeSwapHop(bytes1(0), address(0), _poolKey()));
+        bytes memory paths = path;
+        for (uint256 i; i < zeroPaths; ++i) {
+            paths = zeroFirst ? bytes.concat(zeroPath, paths) : bytes.concat(paths, zeroPath);
+        }
+        bytes memory data = bytes.concat(
+            bytes1(0),
+            bytes1(zeroPaths),
+            bytes20(TOKEN0),
+            bytes20(TOKEN1),
+            bytes16(_encodeInt128(exactOutput ? type(int128).min : int128(0))),
+            paths
+        );
+        (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(success, "multi quote");
+        assertEq(result, singleResult, "zero paths preserve result");
+        // A nonzero threshold of the opposite sign must still fail after zero paths.
+        data[42] = exactOutput ? bytes1(0) : bytes1(uint8(0x80));
+        data[57] = exactOutput ? bytes1(uint8(1)) : bytes1(0);
+        _assertRouterReverts(data, InvalidRoute.selector);
     }
 
     function test_CodeSize() external view {

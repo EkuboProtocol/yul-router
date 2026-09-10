@@ -167,35 +167,26 @@ object "YulRouter" {
             function executeRoute() -> specifiedToken, calculatedToken, totalSpecified, totalCalculated {
                 let routeEnd := sub(calldatasize(), shl(6, iszero(shr(224, calldataload(0)))))
 
-                let offset := 0x5e
+                let offset := add(0x5e, mul(and(byte(0, calldataload(0x24)), 1), 20))
 
-                // The low 16 bits track remaining multi-hops. Bits 16-17 track exactness:
-                // 0 is unknown/all zero, 1 is exact input, and 2 is exact output. Bits 18-26
-                // cache the current multi-hop's original hop count for partial-fill validation.
-                let multiHopState := add(byte(1, calldataload(0x24)), 1)
+                let multiHopsRemaining := add(byte(1, calldataload(0x24)), 1)
+                // 0 is unknown/all zero, 1 is exact input, and 2 is exact output.
+                let exactness
 
                 specifiedToken := shr(96, calldataload(0x26))
                 calculatedToken := shr(96, calldataload(0x3a))
 
-                switch and(byte(0, calldataload(0x24)), 1)
-                case 0 {
-                    if gt(0x5e, routeEnd) {
-                        revertSelector(0x84e505d2) // InvalidRoute()
-                    }
-                }
-                default {
-                    if gt(0x72, routeEnd) {
-                        revertSelector(0x84e505d2) // InvalidRoute()
-                    }
-                    offset := 0x72
+                if gt(offset, routeEnd) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                for { } and(multiHopState, 0xffff) { multiHopState := sub(multiHopState, 1) } {
+                for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
                     let currentToken := specifiedToken
                     let currentAmount := sar(128, calldataload(offset))
                     offset := add(offset, 16)
                     let hopsRemaining := add(byte(0, calldataload(offset)), 1)
-                    multiHopState := or(and(multiHopState, 0x3ffff), shl(18, hopsRemaining))
+                    // Keep the original count for partial-fill validation as the loop counts down.
+                    let hopCount := hopsRemaining
                     offset := add(offset, 1)
 
                     if gt(offset, routeEnd) {
@@ -206,11 +197,10 @@ object "YulRouter" {
 
                     if currentAmount {
                         let routeExactness := add(slt(currentAmount, 0), 1)
-                        let exactness := and(shr(16, multiHopState), 3)
                         if and(exactness, iszero(eq(exactness, routeExactness))) {
                             revertSelector(0x84e505d2) // InvalidRoute()
                         }
-                        multiHopState := or(and(multiHopState, not(0x30000)), shl(16, routeExactness))
+                        exactness := routeExactness
                     }
 
                     for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
@@ -226,7 +216,7 @@ object "YulRouter" {
                                 routeEnd,
                                 currentAmount,
                                 currentToken,
-                                and(shr(18, multiHopState), 0x1ff)
+                                hopCount
                             )
                             totalSpecified := add(totalSpecified, specifiedAdjustment)
                         }
@@ -238,7 +228,7 @@ object "YulRouter" {
                                 routeEnd,
                                 currentAmount,
                                 currentToken,
-                                and(shr(18, multiHopState), 0x1ff)
+                                hopCount
                             )
                             totalSpecified := add(totalSpecified, specifiedAdjustment)
                         }
@@ -288,7 +278,6 @@ object "YulRouter" {
                 }
 
                 let threshold := sar(128, calldataload(0x4e))
-                let exactness := and(shr(16, multiHopState), 3)
                 if threshold {
                     if exactness {
                         if xor(slt(threshold, 0), eq(exactness, 2)) {
@@ -305,15 +294,10 @@ object "YulRouter" {
             }
 
             function resolveDirection(currentToken, token0, token1) -> isToken1 {
-                if eq(currentToken, token0) {
-                    isToken1 := eq(token0, token1)
-                    leave
+                isToken1 := eq(currentToken, token1)
+                if iszero(or(isToken1, eq(currentToken, token0))) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
                 }
-                if eq(currentToken, token1) {
-                    isToken1 := 1
-                    leave
-                }
-                revertSelector(0x84e505d2) // InvalidRoute()
             }
 
             function validatePartialSwap(allowPartial, hopCount, amount) {
@@ -454,35 +438,35 @@ object "YulRouter" {
             }
 
             function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                mstore(0x60, 0) // swap_6269342730()
-                mstore(0x64, token0)
-                mstore(0x84, token1)
-                mstore(0xa4, config)
-                mstore(0xc4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
+                mstore(0, 0) // swap_6269342730()
+                mstore(4, token0)
+                mstore(0x24, token1)
+                mstore(0x44, config)
+                mstore(0x64, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                if iszero(call(gas(), coreAddress, 0, 0x60, 132, 0x60, 64)) {
-                    revertExternalCall(0x60)
+                if iszero(call(gas(), coreAddress, 0, 0, 132, 0, 64)) {
+                    revertExternalCall(0)
                 }
 
-                update := mload(0x60)
+                update := mload(0)
             }
 
             function forwardedSwap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                mstore(0x60, shl(224, 0x101e8952)) // forward(address)
-                mstore(0x64, forwardee)
-                mstore(0x84, token0)
-                mstore(0xa4, token1)
-                mstore(0xc4, config)
-                mstore(0xe4, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
+                mstore(0, shl(224, 0x101e8952)) // forward(address)
+                mstore(4, forwardee)
+                mstore(0x24, token0)
+                mstore(0x44, token1)
+                mstore(0x64, config)
+                mstore(0x84, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                if iszero(call(gas(), coreAddress, 0, 0x60, 164, 0x60, 64)) {
-                    revertExternalCall(0x60)
+                if iszero(call(gas(), coreAddress, 0, 0, 164, 0, 64)) {
+                    revertExternalCall(0)
                 }
                 if lt(returndatasize(), 32) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                update := mload(0x60)
+                update := mload(0)
             }
 
             function signedExclusiveSwap(
@@ -500,7 +484,7 @@ object "YulRouter" {
                 signatureOffset,
                 signatureLength
             ) -> update {
-                let ptr := 0x60
+                let ptr := 0
                 let dataPtr := add(ptr, 36)
                 let signaturePtr := add(dataPtr, 0x100)
                 let paddedSignatureLength := and(add(signatureLength, 31), not(31))
