@@ -141,7 +141,34 @@ contract DebtForwardee {
     }
 }
 
+contract ReenterOnRefund {
+    address private immutable router;
+    bytes private route;
+    bool public entered;
+    bytes public result;
+
+    constructor(address router_, bytes memory route_) {
+        router = router_;
+        route = route_;
+    }
+
+    receive() external payable {
+        require(!entered, "unexpected second refund");
+        entered = true;
+        (bool success, bytes memory returndata) = router.call(route);
+        require(success, "reentrant swap");
+        result = returndata;
+    }
+}
+
+contract RejectNative {
+    receive() external payable {
+        revert("reject native");
+    }
+}
+
 contract YulRouterTest is Test {
+    receive() external payable {}
     using CoreLib for ICore;
     using FlashAccountantLib for ICore;
     using SignedExclusiveSwapLib for *;
@@ -1261,6 +1288,148 @@ contract YulRouterTest is Test {
         }
     }
 
+    function testFuzz_NativeSettlement(uint128 rawAmount, uint128 rawExcess, bool specifiedNative, bool exactOutput)
+        external
+    {
+        _checkNativeSettlement(rawAmount, rawExcess, specifiedNative, exactOutput, "");
+    }
+
+    function test_NativeInputWithRefund() external {
+        _checkNativeSettlement(SWAP_AMOUNT, SWAP_AMOUNT, true, false, "input_refund");
+    }
+
+    function test_NativeOutput() external {
+        _checkNativeSettlement(SWAP_AMOUNT, 0, false, false, "output");
+    }
+
+    function _checkNativeSettlement(
+        uint128 rawAmount,
+        uint128 rawExcess,
+        bool specifiedNative,
+        bool exactOutput,
+        string memory gasCase
+    ) private {
+        PoolKey memory key = _poolKey(address(0), TOKEN1);
+        _initializeAndSeed(key);
+        address payer = makeAddr("native payer");
+        address recipient = makeAddr("native recipient");
+        int128 amount = int128(uint128(bound(rawAmount, 1, SWAP_AMOUNT)));
+        uint256 excess = bound(rawExcess, 0, SWAP_AMOUNT);
+        bool nativeInput = specifiedNative != exactOutput;
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            recipient,
+            bytes1(0),
+            address(0),
+            key,
+            specifiedNative ? address(0) : TOKEN1,
+            specifiedNative ? TOKEN1 : address(0),
+            exactOutput ? type(int128).min : int128(0),
+            exactOutput ? -amount : amount
+        );
+        vm.prank(payer);
+        (bool quoted, bytes memory quoteResult) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(quoted, "native quote");
+        (,, int256 specifiedAmount, int256 calculatedAmount) = _decodeRouteResult(quoteResult);
+        uint256 spent = uint256(exactOutput ? -calculatedAmount : specifiedAmount);
+        uint256 received = uint256(exactOutput ? -specifiedAmount : calculatedAmount);
+        uint256 value = (nativeInput ? spent : 0) + excess;
+        vm.deal(payer, value);
+        deal(TOKEN1, payer, POSITION_AMOUNT);
+        vm.prank(payer);
+        IERC20(TOKEN1).approve(router, POSITION_AMOUNT);
+        uint256 coreNativeBefore = CORE_ADDRESS.balance;
+        vm.prank(payer);
+        (bool success, bytes memory result) = router.call{value: value}(data);
+        if (bytes(gasCase).length != 0) vm.snapshotGasLastCall("yul_router_native", gasCase);
+        assertTrue(success, "native swap");
+        assertEq(result, quoteResult, "native quote matches swap");
+        assertEq(payer.balance, excess, "refund goes to payer");
+        assertEq(recipient.balance, nativeInput ? 0 : received, "native output goes to recipient");
+        assertEq(IERC20(TOKEN1).balanceOf(payer), POSITION_AMOUNT - (nativeInput ? 0 : spent), "token input");
+        assertEq(IERC20(TOKEN1).balanceOf(recipient), nativeInput ? received : 0, "token output");
+        assertEq(
+            CORE_ADDRESS.balance,
+            nativeInput ? coreNativeBefore + spent : coreNativeBefore - received,
+            "core native balance"
+        );
+        assertEq(router.balance, 0, "no stranded native");
+    }
+
+    function testRevert_InsufficientNativePayment() external {
+        PoolKey memory key = _poolKey(address(0), TOKEN1);
+        _initializeAndSeed(key);
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(this), bytes1(0), address(0), key, address(0), TOKEN1, 0, int128(SWAP_AMOUNT)
+        );
+        bytes32 state = PoolState.unwrap(CORE.poolState(key.toPoolId()));
+        vm.deal(address(this), SWAP_AMOUNT);
+        (bool success, bytes memory result) = router.call{value: SWAP_AMOUNT - 1}(data);
+        assertFalse(success, "insufficient native");
+        assertEq(result, abi.encodeWithSelector(InvalidRoute.selector));
+        assertEq(PoolState.unwrap(CORE.poolState(key.toPoolId())), state, "pool unchanged");
+        assertEq(router.balance, 0, "no stranded native");
+    }
+
+    function testRevert_NativeRefundFailureRollsBackSwap() external {
+        address payer = address(new RejectNative());
+        bytes memory data = _encodeOneHopRoute(address(this));
+        deal(TOKEN0, payer, SWAP_AMOUNT);
+        vm.deal(payer, 1);
+        vm.prank(payer);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+        bytes32 state = PoolState.unwrap(CORE.poolState(_poolKey().toPoolId()));
+        vm.prank(payer);
+        (bool success, bytes memory result) = router.call{value: 1}(data);
+        assertFalse(success, "refund rejected");
+        assertEq(result, abi.encodeWithSelector(bytes4(keccak256("NativeTransferFailed()"))));
+        assertEq(IERC20(TOKEN0).balanceOf(payer), SWAP_AMOUNT, "payment rolled back");
+        assertEq(IERC20(TOKEN0).allowance(payer, router), SWAP_AMOUNT, "allowance rolled back");
+        assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), state, "pool unchanged");
+        assertEq(payer.balance, 1, "value rolled back");
+    }
+
+    function testRevert_NativeRecipientFailureRollsBackSwap() external {
+        PoolKey memory key = _poolKey(address(0), TOKEN1);
+        _initializeAndSeed(key);
+        bytes memory data = _encodeSwapRouteWithAmounts(
+            address(new RejectNative()), bytes1(0), address(0), key, TOKEN1, address(0), 0, int128(SWAP_AMOUNT)
+        );
+        deal(TOKEN1, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN1).approve(router, SWAP_AMOUNT);
+        bytes32 state = PoolState.unwrap(CORE.poolState(key.toPoolId()));
+        uint256 nativeBefore = CORE_ADDRESS.balance;
+        (bool success, bytes memory result) = router.call(data);
+        assertFalse(success, "recipient rejected native");
+        assertEq(result, abi.encodeWithSelector(bytes4(keccak256("ETHTransferFailed()"))));
+        assertEq(IERC20(TOKEN1).balanceOf(address(this)), SWAP_AMOUNT, "payment rolled back");
+        assertEq(IERC20(TOKEN1).allowance(address(this), router), SWAP_AMOUNT, "allowance rolled back");
+        assertEq(PoolState.unwrap(CORE.poolState(key.toPoolId())), state, "pool unchanged");
+        assertEq(CORE_ADDRESS.balance, nativeBefore, "core native unchanged");
+    }
+
+    function test_NativeRefundCanReenterRouter() external {
+        bytes memory data = _encodeOneHopRoute(address(this));
+        ReenterOnRefund payer = new ReenterOnRefund(router, data);
+        deal(TOKEN0, address(payer), 2 * SWAP_AMOUNT);
+        vm.deal(address(payer), 1);
+        vm.prank(address(payer));
+        IERC20(TOKEN0).approve(router, 2 * SWAP_AMOUNT);
+        uint256 balanceBefore = IERC20(TOKEN1).balanceOf(address(this));
+        vm.prank(address(payer));
+        (bool success, bytes memory result) = router.call{value: 1}(data);
+        assertTrue(success, "outer swap");
+        assertTrue(payer.entered(), "refund reentered");
+        assertEq(IERC20(TOKEN0).balanceOf(address(payer)), 0, "both inputs spent");
+        assertEq(IERC20(TOKEN0).allowance(address(payer), router), 0, "both allowances spent");
+        assertEq(
+            IERC20(TOKEN1).balanceOf(address(this)) - balanceBefore,
+            uint256(_calculatedAmountFromResult(result) + _calculatedAmountFromResult(payer.result())),
+            "both outputs received"
+        );
+        assertEq(address(payer).balance, 1, "refund retained");
+        assertEq(router.balance, 0, "no stranded native");
+    }
+
     function test_MaximumPathCount() external {
         bytes memory data =
             abi.encodePacked(bytes1(0), bytes1(uint8(255)), bytes20(TOKEN0), bytes20(TOKEN1), bytes16(0));
@@ -1478,9 +1647,13 @@ contract YulRouterTest is Test {
     }
 
     function _seedInitializedPool(PoolKey memory key) private {
-        deal(key.token0, address(this), POSITION_AMOUNT);
+        if (key.token0 == address(0)) {
+            vm.deal(address(this), POSITION_AMOUNT);
+        } else {
+            deal(key.token0, address(this), POSITION_AMOUNT);
+            IERC20(key.token0).approve(address(positions), POSITION_AMOUNT);
+        }
         deal(key.token1, address(this), POSITION_AMOUNT);
-        IERC20(key.token0).approve(address(positions), POSITION_AMOUNT);
         IERC20(key.token1).approve(address(positions), POSITION_AMOUNT);
 
         int32 tickLower;
@@ -1493,7 +1666,9 @@ contract YulRouterTest is Test {
             (tickLower, tickUpper) = key.config.stableswapActiveLiquidityTickRange();
         }
 
-        positions.mintAndDeposit(key, tickLower, tickUpper, POSITION_AMOUNT, POSITION_AMOUNT, 0);
+        positions.mintAndDeposit{value: key.token0 == address(0) ? POSITION_AMOUNT : 0}(
+            key, tickLower, tickUpper, POSITION_AMOUNT, POSITION_AMOUNT, 0
+        );
     }
 
     function _encodeOneHopRoute(address recipient) private pure returns (bytes memory) {

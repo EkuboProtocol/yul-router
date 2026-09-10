@@ -24,7 +24,7 @@ object "YulRouter" {
             if eq(caller(), core) {
                 switch shr(224, calldataload(0))
                 case 0 {
-                    locked(core)
+                    locked()
                 }
                 case 1 {
                     forwarded()
@@ -108,7 +108,9 @@ object "YulRouter" {
                 revert(0, returndatasize())
             }
 
-            function locked(coreAddress) {
+            // All route and settlement helpers below are reached only through authenticated
+            // Core callbacks. caller() remains Core across downstream calls and reentrancy.
+            function locked() {
                 let routeEnd := sub(calldatasize(), 0x40)
                 let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute()
                 let payerWithFlags := calldataload(routeEnd)
@@ -129,12 +131,8 @@ object "YulRouter" {
                 }
 
                 let nativeRemaining := calldataload(add(routeEnd, 0x20))
-                nativeRemaining := settle(
-                    coreAddress, specifiedToken, totalSpecified, payer, recipient, nativeRemaining
-                )
-                nativeRemaining := settle(
-                    coreAddress, calculatedToken, sub(0, totalCalculated), payer, recipient, nativeRemaining
-                )
+                nativeRemaining := settle(specifiedToken, totalSpecified, payer, recipient, nativeRemaining)
+                nativeRemaining := settle(calculatedToken, sub(0, totalCalculated), payer, recipient, nativeRemaining)
 
                 if nativeRemaining {
                     if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) {
@@ -208,7 +206,6 @@ object "YulRouter" {
                         case 0 {
                             let specifiedAdjustment
                             offset, currentAmount, currentToken, specifiedAdjustment := executeCoreSwapHop(
-                                caller(),
                                 offset,
                                 routeEnd,
                                 currentAmount,
@@ -220,7 +217,6 @@ object "YulRouter" {
                         case 1 {
                             let specifiedAdjustment
                             offset, currentAmount, currentToken, specifiedAdjustment := executeForwardedSwapHop(
-                                caller(),
                                 offset,
                                 routeEnd,
                                 currentAmount,
@@ -252,11 +248,11 @@ object "YulRouter" {
                                 currentToken := underlying
                             }
 
-                            forwardWrapper(caller(), wrapped, forwardAmount)
+                            forwardWrapper(wrapped, forwardAmount)
                         }
                         case 4 {
                             offset, currentAmount, currentToken :=
-                                executeSignedSwapHop(caller(), offset, routeEnd, currentAmount, currentToken)
+                                executeSignedSwapHop(offset, routeEnd, currentAmount, currentToken)
                         }
                         default {
                             revertSelector(0xee7d6c3a) // InvalidHopType()
@@ -303,7 +299,7 @@ object "YulRouter" {
                 }
             }
 
-            function executeCoreSwapHop(coreAddress, offset, routeEnd, currentAmount, currentToken, hopCount)
+            function executeCoreSwapHop(offset, routeEnd, currentAmount, currentToken, hopCount)
                 -> nextOffset, nextAmount, nextToken, specifiedAdjustment
             {
                 let token0 := shr(96, calldataload(offset))
@@ -327,7 +323,6 @@ object "YulRouter" {
                 }
 
                 let update := coreSwap(
-                    coreAddress,
                     token0,
                     token1,
                     config,
@@ -340,7 +335,7 @@ object "YulRouter" {
                     nextFromUpdate(update, currentAmount, isToken1, token0, token1, shr(31, skipAhead))
             }
 
-            function executeForwardedSwapHop(coreAddress, offset, routeEnd, currentAmount, currentToken, hopCount)
+            function executeForwardedSwapHop(offset, routeEnd, currentAmount, currentToken, hopCount)
                 -> nextOffset, nextAmount, nextToken, specifiedAdjustment
             {
                 if gt(add(offset, 108), routeEnd) {
@@ -365,7 +360,6 @@ object "YulRouter" {
                 }
 
                 let update := forwardedSwap(
-                    coreAddress,
                     forwardee,
                     token0,
                     token1,
@@ -379,7 +373,7 @@ object "YulRouter" {
                     nextFromUpdate(update, currentAmount, isToken1, token0, token1, shr(31, skipAhead))
             }
 
-            function executeSignedSwapHop(coreAddress, offset, routeEnd, currentAmount, currentToken)
+            function executeSignedSwapHop(offset, routeEnd, currentAmount, currentToken)
                 -> nextOffset, nextAmount, nextToken
             {
                 if gt(add(offset, 176), routeEnd) {
@@ -411,7 +405,6 @@ object "YulRouter" {
                 }
 
                 let update := signedExclusiveSwap(
-                    coreAddress,
                     forwardee,
                     token0,
                     token1,
@@ -434,21 +427,21 @@ object "YulRouter" {
                 params := or(params, or(shl(31, isToken1), skipAhead))
             }
 
-            function coreSwap(coreAddress, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
+            function coreSwap(token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
                 mstore(0, 0) // swap_6269342730()
                 mstore(4, token0)
                 mstore(0x24, token1)
                 mstore(0x44, config)
                 mstore(0x64, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                if iszero(call(gas(), coreAddress, 0, 0, 132, 0, 64)) {
+                if iszero(call(gas(), caller(), 0, 0, 132, 0, 64)) {
                     revertExternalCall(0)
                 }
 
                 update := mload(0)
             }
 
-            function forwardedSwap(coreAddress, forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
+            function forwardedSwap(forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
                 mstore(0, shl(224, 0x101e8952)) // forward(address)
                 mstore(4, forwardee)
                 mstore(0x24, token0)
@@ -456,7 +449,7 @@ object "YulRouter" {
                 mstore(0x64, config)
                 mstore(0x84, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                if iszero(call(gas(), coreAddress, 0, 0, 164, 0, 64)) {
+                if iszero(call(gas(), caller(), 0, 0, 164, 0, 64)) {
                     revertExternalCall(0)
                 }
                 if lt(returndatasize(), 32) {
@@ -467,7 +460,6 @@ object "YulRouter" {
             }
 
             function signedExclusiveSwap(
-                coreAddress,
                 forwardee,
                 token0,
                 token1,
@@ -501,7 +493,7 @@ object "YulRouter" {
                 calldatacopy(signaturePtr, signatureOffset, signatureLength)
                 mstore(add(signaturePtr, signatureLength), 0)
 
-                if iszero(call(gas(), coreAddress, 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
+                if iszero(call(gas(), caller(), 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
                     revertExternalCall(ptr)
                 }
                 if lt(returndatasize(), 32) {
@@ -511,12 +503,12 @@ object "YulRouter" {
                 update := mload(ptr)
             }
 
-            function forwardWrapper(coreAddress, wrapper, amount) {
+            function forwardWrapper(wrapper, amount) {
                 mstore(0, shl(224, 0x101e8952)) // forward(address)
                 mstore(4, wrapper)
                 mstore(36, amount)
 
-                if iszero(call(gas(), coreAddress, 0, 0, 68, 0, 0)) {
+                if iszero(call(gas(), caller(), 0, 0, 68, 0, 0)) {
                     revertExternalCall(0)
                 }
             }
@@ -593,46 +585,46 @@ object "YulRouter" {
                 nextAmount := sub(0, calculatedDelta)
             }
 
-            function settle(coreAddress, token, signedAmount, payer, recipient, nativeRemaining) -> updatedNativeRemaining {
+            function settle(token, signedAmount, payer, recipient, nativeRemaining) -> updatedNativeRemaining {
                 if sgt(signedAmount, 0) {
-                    updatedNativeRemaining := pay(coreAddress, token, payer, signedAmount, nativeRemaining)
+                    updatedNativeRemaining := pay(token, payer, signedAmount, nativeRemaining)
                     leave
                 }
 
                 if slt(signedAmount, 0) {
-                    withdraw(coreAddress, token, recipient, sub(0, signedAmount))
+                    withdraw(token, recipient, sub(0, signedAmount))
                 }
                 updatedNativeRemaining := nativeRemaining
             }
 
-            function pay(coreAddress, token, payer, amount, nativeRemaining) -> updatedNativeRemaining {
+            function pay(token, payer, amount, nativeRemaining) -> updatedNativeRemaining {
                 switch token
                 case 0 {
                     if gt(amount, nativeRemaining) {
                         revertSelector(0x84e505d2) // InvalidRoute()
                     }
 
-                    if iszero(call(gas(), coreAddress, amount, 0, 0, 0, 0)) {
+                    if iszero(call(gas(), caller(), amount, 0, 0, 0, 0)) {
                         revertSelector(0xf4b3b1bc) // NativeTransferFailed()
                     }
 
                     updatedNativeRemaining := sub(nativeRemaining, amount)
                 }
                 default {
-                    payErc20(coreAddress, payer, token, amount)
+                    payErc20(payer, token, amount)
                     updatedNativeRemaining := nativeRemaining
                 }
             }
 
-            function payErc20(coreAddress, payer, token, amount) {
+            function payErc20(payer, token, amount) {
                 // startPayments(token)
                 mstore(0, shl(224, 0xf9b6a796))
                 mstore(4, token)
-                pop(call(gas(), coreAddress, 0, 0, 36, 0, 0))
+                pop(call(gas(), caller(), 0, 0, 36, 0, 0))
 
                 mstore(0, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
                 mstore(4, payer)
-                mstore(36, coreAddress)
+                mstore(36, caller())
                 mstore(68, amount)
 
                 let success := call(gas(), token, 0, 0, 100, 0, 32)
@@ -647,16 +639,16 @@ object "YulRouter" {
                 // completePayments(token)
                 mstore(0, shl(224, 0x12e103f1))
                 mstore(4, token)
-                pop(call(gas(), coreAddress, 0, 0, 36, 0, 0))
+                pop(call(gas(), caller(), 0, 0, 36, 0, 0))
             }
 
-            function withdraw(coreAddress, token, recipient, amount) {
+            function withdraw(token, recipient, amount) {
                 mstore(0, shl(224, 0x3ccfd60b)) // withdraw()
                 mstore(4, shl(96, token))
                 mstore(24, shl(96, recipient))
                 mstore(44, shl(128, amount))
 
-                if iszero(call(gas(), coreAddress, 0, 0, 60, 0, 0)) {
+                if iszero(call(gas(), caller(), 0, 0, 60, 0, 0)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
