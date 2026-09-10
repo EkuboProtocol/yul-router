@@ -188,8 +188,10 @@ object "YulRouter" {
 
                     if currentAmount {
                         let routeExactness := add(slt(currentAmount, 0), 1)
-                        if and(exactness, iszero(eq(exactness, routeExactness))) {
-                            revertSelector(0x84e505d2) // InvalidRoute()
+                        if exactness {
+                            if iszero(eq(exactness, routeExactness)) {
+                                revertSelector(0x84e505d2) // InvalidRoute()
+                            }
                         }
                         exactness := routeExactness
                     }

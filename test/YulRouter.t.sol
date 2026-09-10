@@ -1582,6 +1582,70 @@ contract YulRouterTest is Test {
         assertEq(result, abi.encode(TOKEN0, TOKEN0, int256(0), int256(0)), "zero result");
     }
 
+    function testRevert_MixedSignsExactOutputFirst() external {
+        _checkMixedSigns(-int128(SWAP_AMOUNT), int128(2 * SWAP_AMOUNT));
+    }
+
+    function testRevert_MixedSignsExactInputFirst() external {
+        _checkMixedSigns(int128(2 * SWAP_AMOUNT), -int128(SWAP_AMOUNT));
+    }
+
+    function _checkMixedSigns(int128 first, int128 second) private {
+        // Cover zero paths before, between, and after the two nonzero paths.
+        for (uint8 zeroMask; zeroMask < 8; ++zeroMask) {
+            bytes memory data = _encodeTwoPathsWithZeros(first, second, zeroMask, 0);
+            _assertRouterReverts(abi.encodeWithSelector(QUOTE_SELECTOR, data), InvalidRoute.selector);
+            _assertRouterReverts(data, InvalidRoute.selector);
+            forwardTarget = router;
+            forwardData = data;
+            vm.expectRevert(InvalidRoute.selector);
+            CORE.lock();
+        }
+    }
+
+    function test_SameSignExactInputPathsWithZeros() external {
+        _checkSameSignPaths(int128(SWAP_AMOUNT), 0);
+    }
+
+    function test_SameSignExactOutputPathsWithZeros() external {
+        _checkSameSignPaths(-int128(SWAP_AMOUNT), type(int128).min);
+    }
+
+    function _checkSameSignPaths(int128 amount, int128 threshold) private {
+        bytes memory expected;
+        for (uint8 zeroMask; zeroMask < 8; ++zeroMask) {
+            bytes memory data = _encodeTwoPathsWithZeros(amount, amount, zeroMask, threshold);
+            (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+            assertTrue(success, "same-sign quote");
+            (,, int256 totalSpecified,) = _decodeRouteResult(result);
+            assertEq(totalSpecified, int256(amount) * 2, "specified amount");
+            if (zeroMask == 0) expected = result;
+            else assertEq(result, expected, "zero paths preserve result");
+        }
+    }
+
+    function _encodeTwoPathsWithZeros(int128 first, int128 second, uint8 zeroMask, int128 threshold)
+        private
+        pure
+        returns (bytes memory)
+    {
+        bytes memory hop = _encodeSwapHop(bytes1(0), address(0), _poolKey());
+        bytes memory paths;
+        uint8 pathCount = 2;
+        for (uint8 i; i < 3; ++i) {
+            if ((zeroMask & (1 << i)) != 0) {
+                paths = bytes.concat(paths, bytes16(0), bytes1(0), hop);
+                ++pathCount;
+            }
+            if (i < 2) {
+                paths = bytes.concat(paths, bytes16(_encodeInt128(i == 0 ? first : second)), bytes1(0), hop);
+            }
+        }
+        return abi.encodePacked(
+            bytes1(0), bytes1(pathCount - 1), bytes20(TOKEN0), bytes20(TOKEN1), bytes16(_encodeInt128(threshold)), paths
+        );
+    }
+
     function testFuzz_ZeroPathsPreserveExactness(bool exactOutput, uint8 zeroPaths, bool zeroFirst) external {
         zeroPaths = uint8(bound(zeroPaths, 1, 4));
         int128 amount = exactOutput ? -int128(SWAP_AMOUNT) : int128(SWAP_AMOUNT);
