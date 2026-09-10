@@ -112,7 +112,7 @@ object "YulRouter" {
             // Core callbacks. caller() remains Core across downstream calls and reentrancy.
             function locked() {
                 let routeEnd := sub(calldatasize(), 0x40)
-                let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute()
+                let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute(routeEnd)
                 let payerWithFlags := calldataload(routeEnd)
                 let payer := and(payerWithFlags, 0xffffffffffffffffffffffffffffffffffffffff)
 
@@ -148,7 +148,7 @@ object "YulRouter" {
             }
 
             function forwarded() {
-                let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute()
+                let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute(calldatasize())
 
                 // Return route amounts without settling. The original locker can derive the endpoint debt
                 // changes as (totalSpecified, -totalCalculated) and combine them with another operation.
@@ -159,8 +159,7 @@ object "YulRouter" {
                 return(0, 0x80)
             }
 
-            function executeRoute() -> specifiedToken, calculatedToken, totalSpecified, totalCalculated {
-                let routeEnd := sub(calldatasize(), shl(6, iszero(shr(224, calldataload(0)))))
+            function executeRoute(routeEnd) -> specifiedToken, calculatedToken, totalSpecified, totalCalculated {
 
                 let offset := add(0x5e, mul(and(byte(0, calldataload(0x24)), 1), 20))
 
@@ -315,12 +314,7 @@ object "YulRouter" {
                 validatePartialSwap(shr(31, skipAhead), hopCount, currentAmount)
                 let isToken1 := resolveDirection(currentToken, token0, token1)
 
-                if iszero(sqrtRatioLimit) {
-                    sqrtRatioLimit := 0x00000000400065a8177fae27
-                    if xor(slt(currentAmount, 0), isToken1) {
-                        sqrtRatioLimit := 0xffff9a5889f795069a41a8a3
-                    }
-                }
+                sqrtRatioLimit := resolveLimit(currentAmount, isToken1, sqrtRatioLimit)
 
                 let update := coreSwap(
                     token0,
@@ -352,12 +346,7 @@ object "YulRouter" {
                 validatePartialSwap(shr(31, skipAhead), hopCount, currentAmount)
                 let isToken1 := resolveDirection(currentToken, token0, token1)
 
-                if iszero(sqrtRatioLimit) {
-                    sqrtRatioLimit := 0x00000000400065a8177fae27
-                    if xor(slt(currentAmount, 0), isToken1) {
-                        sqrtRatioLimit := 0xffff9a5889f795069a41a8a3
-                    }
-                }
+                sqrtRatioLimit := resolveLimit(currentAmount, isToken1, sqrtRatioLimit)
 
                 let update := forwardedSwap(
                     forwardee,
@@ -415,6 +404,16 @@ object "YulRouter" {
                     signatureLength
                 )
                 nextAmount, nextToken := nextFromUpdateExact(update, currentAmount, isToken1, token0, token1)
+            }
+
+            function resolveLimit(amount, isToken1, limit) -> resolved {
+                resolved := limit
+                if iszero(resolved) {
+                    resolved := 0x00000000400065a8177fae27
+                    if xor(slt(amount, 0), isToken1) {
+                        resolved := 0xffff9a5889f795069a41a8a3
+                    }
+                }
             }
 
             function packParams(amount, isToken1, sqrtRatioLimit, skipAhead) -> params {
