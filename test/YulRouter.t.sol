@@ -344,6 +344,90 @@ contract YulRouterTest is Test {
         assertGt(saved1, 0, "saved fee");
     }
 
+    function testFuzz_SignedSwapDirections(uint128 rawAmount, bool reverse, bool exactOutput) external {
+        PoolKey memory key = _signedExclusiveSwapPoolKey();
+        signedExclusiveSwap.initializePool(key, 0, controller);
+        _seedInitializedPool(key);
+        SignedSwapMeta meta =
+            createSignedSwapMeta(router, uint32(block.timestamp + 1 hours), SIGNED_EXCLUSIVE_SWAP_FEE, 123);
+        bytes memory data = _encodeSignedExclusiveSwapRoute(
+            address(this), key, meta, MIN_BALANCE_UPDATE, _signSignedExclusiveSwap(key, meta, MIN_BALANCE_UPDATE)
+        );
+        int128 amount = int128(uint128(bound(rawAmount, 1, SWAP_AMOUNT)));
+        if (exactOutput) amount = -amount;
+        _setSignedRouteAmounts(data, reverse, amount);
+        (bool quoteSuccess, bytes memory quoteResult) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(quoteSuccess, "signed quote");
+        assertFalse(signedExclusiveSwap.nonceBitmap(0).isSet(123), "quote preserves nonce");
+        deal(TOKEN0, address(this), POSITION_AMOUNT);
+        deal(TOKEN1, address(this), POSITION_AMOUNT);
+        IERC20(TOKEN0).approve(router, POSITION_AMOUNT);
+        IERC20(TOKEN1).approve(router, POSITION_AMOUNT);
+        (bool success, bytes memory result) = router.call(data);
+        assertTrue(success, "signed swap");
+        assertEq(result, quoteResult, "signed quote matches swap");
+        (address specified, address calculated, int256 actualSpecified, int256 actualCalculated) =
+            _decodeRouteResult(result);
+        assertEq(actualSpecified, amount, "specified amount");
+        assertEq(
+            IERC20(specified).balanceOf(address(this)),
+            uint256(int256(uint256(POSITION_AMOUNT)) - amount),
+            "specified balance"
+        );
+        assertEq(
+            IERC20(calculated).balanceOf(address(this)),
+            uint256(int256(uint256(POSITION_AMOUNT)) + actualCalculated),
+            "calculated balance"
+        );
+        assertTrue(signedExclusiveSwap.nonceBitmap(0).isSet(123), "swap uses nonce");
+    }
+
+    function testFuzz_SignedUpdateValidation(int128 amount, int128 delta0, int128 delta1, bool reverse, bool exactFill)
+        external
+    {
+        if (exactFill) {
+            if (reverse) delta1 = amount;
+            else delta0 = amount;
+        }
+        bytes memory data = _encodeSignedExclusiveSwapRoute(
+            address(this), _signedExclusiveSwapPoolKey(), SignedSwapMeta.wrap(0), MIN_BALANCE_UPDATE, bytes("")
+        );
+        _setSignedRouteAmounts(data, reverse, amount);
+        bytes32 update = bytes32((uint256(_encodeInt128(delta0)) << 128) | _encodeInt128(delta1));
+        vm.mockCall(CORE_ADDRESS, abi.encodeWithSelector(IFlashAccountant.forward.selector), abi.encode(update));
+        (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        int256 specifiedDelta = reverse ? int256(delta1) : int256(delta0);
+        int256 calculatedAmount = -(reverse ? int256(delta0) : int256(delta1));
+        if (specifiedDelta != amount) {
+            assertFalse(success, "mismatched specified delta");
+            assertEq(result, abi.encodeWithSelector(PartialSwapsDisallowed.selector));
+        } else if (amount > 0 && calculatedAmount < 0) {
+            assertFalse(success, "slippage");
+            assertEq(result, abi.encodeWithSelector(SlippageCheckFailed.selector, calculatedAmount));
+        } else {
+            assertTrue(success, "valid exact update");
+            assertEq(
+                result,
+                abi.encode(reverse ? TOKEN1 : TOKEN0, reverse ? TOKEN0 : TOKEN1, int256(amount), calculatedAmount)
+            );
+        }
+    }
+
+    function _setSignedRouteAmounts(bytes memory data, bool reverse, int128 amount) private pure {
+        bytes20 specified = bytes20(reverse ? TOKEN1 : TOKEN0);
+        bytes20 calculated = bytes20(reverse ? TOKEN0 : TOKEN1);
+        bytes16 threshold = bytes16(_encodeInt128(amount > 0 ? int128(0) : type(int128).min));
+        bytes16 encodedAmount = bytes16(_encodeInt128(amount));
+        for (uint256 i; i < 20; ++i) {
+            data[2 + i] = specified[i];
+            data[22 + i] = calculated[i];
+        }
+        for (uint256 i; i < 16; ++i) {
+            data[42 + i] = threshold[i];
+            data[78 + i] = encodedAmount[i];
+        }
+    }
+
     function testRevert_SignedExclusiveSwapHopRejectsUnauthorizedLocker() external {
         PoolKey memory key = _signedExclusiveSwapPoolKey();
         signedExclusiveSwap.initializePool(key, 0, controller);
@@ -474,6 +558,7 @@ contract YulRouterTest is Test {
 
         vm.prank(quoteCaller);
         (bool success, bytes memory returndata) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        vm.snapshotGasLastCall("yul_router_quotes", "core");
 
         assertTrue(success, "quote call");
         assertEq(returndata.length, 0x80, "quote return length");
@@ -595,6 +680,28 @@ contract YulRouterTest is Test {
         assertEq(IERC20(TOKEN0).balanceOf(address(this)), balance0, "token0 balance");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)), balance1, "token1 balance");
         assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), poolState, "pool state");
+    }
+
+    function testFuzz_QuoteRejectsMalformedAbiBeforeLock(uint256 word, uint8 mode) external {
+        bytes memory route = _encodeOneHopRoute(address(this));
+        bytes memory data = abi.encodeWithSelector(QUOTE_SELECTOR, route);
+        mode %= 4;
+        if (mode == 0) {
+            uint256 available = data.length - 68;
+            // Exclude lengths whose padded size is valid for this envelope.
+            if (word <= available && word > available - 32) word = type(uint256).max;
+            assembly ("memory-safe") { mstore(add(data, 68), word) }
+        } else if (mode == 1) {
+            if (word == 32) word = 0;
+            assembly ("memory-safe") { mstore(add(data, 36), word) }
+        } else if (mode == 2) {
+            uint256 length = 4 + word % (data.length - 4);
+            assembly ("memory-safe") { mstore(data, length) }
+        } else {
+            data = bytes.concat(data, new bytes(1 + word % 64));
+        }
+        vm.mockCallRevert(CORE_ADDRESS, abi.encodeWithSelector(IFlashAccountant.lock.selector), hex"abcdef");
+        _assertRouterReverts(data, InvalidRoute.selector);
     }
 
     function testRevert_QuoteBubblesRouteErrors() external {

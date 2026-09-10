@@ -66,13 +66,10 @@ object "YulRouter" {
                 }
 
                 let size := calldataload(0x24)
-                let sizeWithPadding := add(size, 31)
-                if lt(sizeWithPadding, size) {
-                    revertSelector(0x84e505d2) // InvalidRoute()
-                }
-                let paddedSize := and(sizeWithPadding, not(31))
-                let encodedSize := add(0x44, paddedSize)
-                if or(lt(encodedSize, paddedSize), iszero(eq(calldatasize(), encodedSize))) {
+                // The header check makes this subtraction safe. Bounding size by the
+                // available bytes also rules out overflow when rounding it up to a word.
+                let available := sub(calldatasize(), 0x44)
+                if or(gt(size, available), iszero(eq(and(add(size, 31), not(31)), available))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
@@ -100,7 +97,7 @@ object "YulRouter" {
                 }
 
                 if eq(returndatasize(), 0x84) {
-                    returndatacopy(0, 0, 0x20)
+                    // The failure-marker check above already copied the first word.
                     if eq(shr(224, mload(0)), 0x4852c8eb) { // QuoteResult(address,address,int256,int256)
                         returndatacopy(0, 4, 0x80)
                         return(0, 0x80)
@@ -582,8 +579,18 @@ object "YulRouter" {
             }
 
             function nextFromUpdateExact(update, amount, isToken1, token0, token1) -> nextAmount, nextToken {
-                let specifiedAdjustment
-                nextAmount, nextToken, specifiedAdjustment := nextFromUpdate(update, amount, isToken1, token0, token1, 0)
+                let specifiedDelta := sar(128, update)
+                let calculatedDelta := signextend(15, update)
+                nextToken := token1
+                if isToken1 {
+                    specifiedDelta := calculatedDelta
+                    calculatedDelta := sar(128, update)
+                    nextToken := token0
+                }
+                if iszero(eq(specifiedDelta, amount)) {
+                    revertSelector(0xe3648855) // PartialSwapsDisallowed()
+                }
+                nextAmount := sub(0, calculatedDelta)
             }
 
             function settle(coreAddress, token, signedAmount, payer, recipient, nativeRemaining) -> updatedNativeRemaining {
