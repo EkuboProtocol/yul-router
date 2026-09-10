@@ -161,7 +161,7 @@ object "YulRouter" {
                 let offset := add(0x5e, mul(and(byte(0, calldataload(0x24)), 1), 20))
 
                 let multiHopsRemaining := add(byte(1, calldataload(0x24)), 1)
-                // 0 is unknown/all zero, 1 is exact input, and 2 is exact output.
+                // The last nonzero specified amount records the route's sign; zero means unknown.
                 let exactness
 
                 specifiedToken := shr(96, calldataload(0x26))
@@ -187,13 +187,12 @@ object "YulRouter" {
                     totalSpecified := add(totalSpecified, currentAmount)
 
                     if currentAmount {
-                        let routeExactness := add(slt(currentAmount, 0), 1)
                         if exactness {
-                            if iszero(eq(exactness, routeExactness)) {
+                            if slt(xor(exactness, currentAmount), 0) {
                                 revertSelector(0x84e505d2) // InvalidRoute()
                             }
                         }
-                        exactness := routeExactness
+                        exactness := currentAmount
                     }
 
                     for { } hopsRemaining { hopsRemaining := sub(hopsRemaining, 1) } {
@@ -271,7 +270,7 @@ object "YulRouter" {
                 let threshold := sar(128, calldataload(0x4e))
                 if threshold {
                     if exactness {
-                        if xor(slt(threshold, 0), eq(exactness, 2)) {
+                        if slt(xor(threshold, exactness), 0) {
                             revertSelector(0x84e505d2) // InvalidRoute()
                         }
                     }
@@ -671,8 +670,8 @@ object "YulRouter" {
             }
 
             function revertSelector(selector) {
-                mstore(0, shl(224, selector))
-                revert(0, 4)
+                mstore(0, selector)
+                revert(28, 4)
             }
         }
     }

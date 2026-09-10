@@ -1582,6 +1582,23 @@ contract YulRouterTest is Test {
         assertEq(result, abi.encode(TOKEN0, TOKEN0, int256(0), int256(0)), "zero result");
     }
 
+    function testFuzz_PathSigns(int128 first, int128 second, uint8 zeroMask) external {
+        first = int128(bound(int256(first), -int256(uint256(SWAP_AMOUNT)), int256(uint256(SWAP_AMOUNT))));
+        second = int128(bound(int256(second), -int256(uint256(SWAP_AMOUNT)), int256(uint256(SWAP_AMOUNT))));
+        bool mixed = (first < 0 && second > 0) || (first > 0 && second < 0);
+        int128 threshold = first < 0 || second < 0 ? type(int128).min : int128(0);
+        bytes memory data = _encodeTwoPathsWithZeros(first, second, zeroMask & 7, threshold);
+        (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        if (mixed) {
+            assertFalse(success, "mixed signs");
+            assertEq(result, abi.encodeWithSelector(InvalidRoute.selector));
+        } else {
+            assertTrue(success, "compatible signs");
+            (,, int256 totalSpecified,) = _decodeRouteResult(result);
+            assertEq(totalSpecified, int256(first) + int256(second), "specified amount");
+        }
+    }
+
     function testRevert_MixedSignsExactOutputFirst() external {
         _checkMixedSigns(-int128(SWAP_AMOUNT), int128(2 * SWAP_AMOUNT));
     }
