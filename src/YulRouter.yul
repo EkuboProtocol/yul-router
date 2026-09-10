@@ -58,10 +58,7 @@ object "YulRouter" {
 
             function quote(coreAddress) {
                 // Standard ABI encoding for quote(bytes): selector, offset, byte length, route data.
-                if or(lt(calldatasize(), 0x44), iszero(eq(calldataload(4), 0x20))) {
-                    revertSelector(0x84e505d2) // InvalidRoute()
-                }
-                if callvalue() {
+                if or(callvalue(), or(lt(calldatasize(), 0x44), iszero(eq(calldataload(4), 0x20)))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
@@ -114,7 +111,6 @@ object "YulRouter" {
                 let routeEnd := sub(calldatasize(), 0x40)
                 let specifiedToken, calculatedToken, totalSpecified, totalCalculated := executeRoute(routeEnd)
                 let payerWithFlags := calldataload(routeEnd)
-                let payer := and(payerWithFlags, 0xffffffffffffffffffffffffffffffffffffffff)
 
                 if shr(160, payerWithFlags) {
                     mstore(0, shl(224, 0x4852c8eb)) // QuoteResult(address,address,int256,int256)
@@ -125,6 +121,8 @@ object "YulRouter" {
                     revert(0, 0x84)
                 }
 
+                // The quote branch above exits whenever any high payer bits are set.
+                let payer := payerWithFlags
                 let recipient := payer
                 if and(byte(0, calldataload(0x24)), 1) {
                     recipient := shr(96, calldataload(0x5e))
@@ -160,7 +158,6 @@ object "YulRouter" {
             }
 
             function executeRoute(routeEnd) -> specifiedToken, calculatedToken, totalSpecified, totalCalculated {
-
                 let offset := add(0x5e, mul(and(byte(0, calldataload(0x24)), 1), 20))
 
                 let multiHopsRemaining := add(byte(1, calldataload(0x24)), 1)
@@ -176,12 +173,12 @@ object "YulRouter" {
 
                 for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
                     let currentToken := specifiedToken
-                    let currentAmount := sar(128, calldataload(offset))
-                    offset := add(offset, 16)
-                    let hopsRemaining := add(byte(0, calldataload(offset)), 1)
+                    let header := calldataload(offset)
+                    let currentAmount := sar(128, header)
+                    let hopsRemaining := add(byte(16, header), 1)
                     // Keep the original count for partial-fill validation as the loop counts down.
                     let hopCount := hopsRemaining
-                    offset := add(offset, 1)
+                    offset := add(offset, 17)
 
                     if gt(offset, routeEnd) {
                         revertSelector(0x84e505d2) // InvalidRoute()

@@ -729,6 +729,18 @@ contract YulRouterTest is Test {
         assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), poolState, "pool state");
     }
 
+    function testFuzz_QuoteRejectsValueBeforeLock(uint256 value) external {
+        if (value == 0) value = 1;
+        vm.deal(address(this), value);
+        vm.mockCallRevert(CORE_ADDRESS, abi.encodeWithSelector(IFlashAccountant.lock.selector), hex"abcdef");
+        bytes memory data = abi.encodeWithSelector(QUOTE_SELECTOR, _encodeOneHopRoute(address(this)));
+        (bool success, bytes memory result) = router.call{value: value}(data);
+        assertFalse(success, "nonzero quote value");
+        assertEq(result, abi.encodeWithSelector(InvalidRoute.selector));
+        assertEq(address(this).balance, value, "value returned");
+        assertEq(router.balance, 0, "no stranded value");
+    }
+
     function testFuzz_QuoteRejectsMalformedAbiBeforeLock(uint256 word, uint8 mode) external {
         bytes memory route = _encodeOneHopRoute(address(this));
         bytes memory data = abi.encodeWithSelector(QUOTE_SELECTOR, route);
