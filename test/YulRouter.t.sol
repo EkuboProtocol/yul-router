@@ -24,6 +24,7 @@ import {PoolKey} from "ekubo/types/poolKey.sol";
 import {PoolState} from "ekubo/types/poolState.sol";
 import {SignedSwapMeta, createSignedSwapMeta} from "ekubo/types/signedSwapMeta.sol";
 import {SqrtRatio} from "ekubo/types/sqrtRatio.sol";
+import {SwapParameters, createSwapParameters} from "ekubo/types/swapParameters.sol";
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
@@ -1505,6 +1506,54 @@ contract YulRouterTest is Test {
             assertEq(IERC20(TOKEN1).balanceOf(address(this)), token1Before, "output rolled back");
             assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), state, "pool unchanged");
         }
+    }
+
+    function testFuzz_SwapParameterEncoding(int128 amount, uint96 limit, uint32 control, bool reverse, uint8 mode)
+        external
+    {
+        mode %= 3;
+        bool allowPartial = mode != 2 && control >> 31 != 0;
+        PoolKey memory key = _poolKey();
+        bytes memory hop =
+            abi.encodePacked(bytes20(key.token0), bytes20(key.token1), PoolConfig.unwrap(key.config), limit, control);
+        if (mode == 2) {
+            hop = bytes.concat(bytes1(uint8(4)), bytes20(VE33), hop, bytes32(0), bytes32(0), bytes4(0));
+        } else {
+            hop = mode == 1 ? bytes.concat(bytes1(uint8(1)), bytes20(VE33), hop) : bytes.concat(bytes1(0), hop);
+        }
+        bytes memory data = abi.encodePacked(
+            bytes1(0),
+            bytes1(0),
+            bytes20(reverse ? TOKEN1 : TOKEN0),
+            bytes20(reverse ? TOKEN0 : TOKEN1),
+            bytes16(_encodeInt128(amount < 0 ? type(int128).min : int128(0))),
+            bytes16(_encodeInt128(amount)),
+            bytes1(0),
+            hop
+        );
+        if (allowPartial && amount == 0) {
+            _assertRouterReverts(abi.encodeWithSelector(QUOTE_SELECTOR, data), InvalidRoute.selector);
+            return;
+        }
+        SwapParameters params = createSwapParameters(SqrtRatio.wrap(limit), amount, reverse, control);
+        params = params.withDefaultSqrtRatioLimit();
+        bytes memory expected = mode == 1
+            ? abi.encodeWithSelector(IFlashAccountant.forward.selector, VE33, key, params)
+            : abi.encodeWithSelector(ICore.swap_6269342730.selector, key, params);
+        if (mode == 2) {
+            expected = bytes.concat(
+                IFlashAccountant.forward.selector,
+                abi.encode(VE33),
+                abi.encode(key, params, SignedSwapMeta.wrap(0), PoolBalanceUpdate.wrap(0), bytes(""))
+            );
+        }
+        bytes32 update =
+            reverse ? bytes32(uint256(_encodeInt128(amount))) : bytes32(uint256(_encodeInt128(amount)) << 128);
+        vm.mockCall(CORE_ADDRESS, expected, abi.encode(update));
+        vm.expectCall(CORE_ADDRESS, expected);
+        (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        assertTrue(success, "encoded swap");
+        assertEq(result, abi.encode(reverse ? TOKEN1 : TOKEN0, reverse ? TOKEN0 : TOKEN1, int256(amount), int256(0)));
     }
 
     function testFuzz_ForwardedUpdateValidation(

@@ -291,7 +291,8 @@ object "YulRouter" {
             }
 
             function validatePartialSwap(allowPartial, hopCount, amount) {
-                if and(allowPartial, or(iszero(eq(hopCount, 1)), iszero(amount))) {
+                // Path headers encode hopCount minus one, so hopCount is always positive.
+                if and(allowPartial, or(gt(hopCount, 1), iszero(amount))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
             }
@@ -302,8 +303,9 @@ object "YulRouter" {
                 let token0 := shr(96, calldataload(offset))
                 let token1 := shr(96, calldataload(add(offset, 20)))
                 let config := calldataload(add(offset, 40))
-                let sqrtRatioLimit := shr(160, calldataload(add(offset, 72)))
-                let skipAhead := shr(224, calldataload(add(offset, 84)))
+                let options := calldataload(add(offset, 72))
+                let sqrtRatioLimit := shr(160, options)
+                let skipAhead := and(shr(128, options), 0xffffffff)
                 nextOffset := add(offset, 88)
                 if gt(nextOffset, routeEnd) {
                     revertSelector(0x84e505d2) // InvalidRoute()
@@ -337,8 +339,9 @@ object "YulRouter" {
                 let token0 := shr(96, calldataload(add(offset, 20)))
                 let token1 := shr(96, calldataload(add(offset, 40)))
                 let config := calldataload(add(offset, 60))
-                let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
-                let skipAhead := shr(224, calldataload(add(offset, 104)))
+                let options := calldataload(add(offset, 92))
+                let sqrtRatioLimit := shr(160, options)
+                let skipAhead := and(shr(128, options), 0xffffffff)
                 nextOffset := add(offset, 108)
 
                 validatePartialSwap(shr(31, skipAhead), hopCount, currentAmount)
@@ -382,12 +385,7 @@ object "YulRouter" {
 
                 let isToken1 := resolveDirection(currentToken, token0, token1)
 
-                if iszero(sqrtRatioLimit) {
-                    sqrtRatioLimit := 0x00000000400065a8177fae27
-                    if xor(slt(currentAmount, 0), isToken1) {
-                        sqrtRatioLimit := 0xffff9a5889f795069a41a8a3
-                    }
-                }
+                sqrtRatioLimit := resolveLimit(currentAmount, isToken1, sqrtRatioLimit)
 
                 let update := signedExclusiveSwap(
                     forwardee,
@@ -405,13 +403,8 @@ object "YulRouter" {
             }
 
             function resolveLimit(amount, isToken1, limit) -> resolved {
-                resolved := limit
-                if iszero(resolved) {
-                    resolved := 0x00000000400065a8177fae27
-                    if xor(slt(amount, 0), isToken1) {
-                        resolved := 0xffff9a5889f795069a41a8a3
-                    }
-                }
+                // Select MIN/MAX via their XOR difference, then use it only for a zero limit.
+                resolved := or(limit, mul(iszero(limit), xor(0x400065a8177fae27, mul(xor(slt(amount, 0), isToken1), 0xffff9a58c9f7f0ae8d3e0684))))
             }
 
             function packParams(amount, isToken1, sqrtRatioLimit, skipAhead) -> params {
@@ -518,6 +511,7 @@ object "YulRouter" {
                         }
                     }
                     default {
+                        specifiedAdjustment := sub(delta1, amount)
                         switch slt(amount, 0)
                         case 0 {
                             if gt(delta1, amount) {
@@ -533,7 +527,6 @@ object "YulRouter" {
                     let delta0 := sar(128, update)
                     nextAmount := sub(0, delta0)
                     nextToken := token0
-                    specifiedAdjustment := sub(delta1, amount)
                     leave
                 }
 
@@ -545,6 +538,7 @@ object "YulRouter" {
                     }
                 }
                 default {
+                    specifiedAdjustment := sub(delta0, amount)
                     switch slt(amount, 0)
                     case 0 {
                         if gt(delta0, amount) {
@@ -560,7 +554,6 @@ object "YulRouter" {
                 let delta1 := signextend(15, update)
                 nextAmount := sub(0, delta1)
                 nextToken := token1
-                specifiedAdjustment := sub(delta0, amount)
             }
 
             function nextFromUpdateExact(update, amount, isToken1, token0, token1) -> nextAmount, nextToken {
