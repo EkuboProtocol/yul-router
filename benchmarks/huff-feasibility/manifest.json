@@ -1,0 +1,50 @@
+{
+  "baseline_commit": "15f0ed22a71cf49bf4ce247760b74f17630657f4",
+  "huff_repository_commit": "a8eb3f888dee82a840810cef0cd57799e17815ff",
+  "huff_reference_path": "contracts/broadcast/HuffRouter.s.sol/1/run-latest.json",
+  "huff_recorded_address": "0xca61c06c5d3f95597295b922ca607f064759fb4b",
+  "huff_token_table_initcode_offset": 19803,
+  "huff_token_table_entries": 224,
+  "huff_token_ids": {
+    "native": 0,
+    "USDC": 214,
+    "USDT": 220,
+    "token_C": 223
+  },
+  "core_commit": "de94c77a665c54f4c848185872b8a55b2c28c1bc",
+  "forge_commit": "982849d3140c01fd3b72905759581a132df7aa98",
+  "solc": "0.8.33",
+  "evm_version": "osaka",
+  "optimizer_runs": 9999999,
+  "isolate": true,
+  "baseline_self_immutable_offset": 34,
+  "sha256": {
+    "single-hop.patch": "14a5e99524a67e836f405fb1f12ca97e61cf6ecfb81eada97fd2372c072aefb2",
+    "indexed-paths.patch": "786a8153170fef441e21ad9be16c0c8a4d598ad4ba3cb0ee51c151a73c1b2427",
+    "huff-init.hex": "4be45fb4eef50701cb30cc3a669728231249ea1b9c960e2e044e5c64d7a1c6d8",
+    "baseline.json": "9b07e80bf0bb3cd540753a26ddb8e235a308a63728f42d18d1f1171a12adf4ff",
+    "single-hop-gas.json": "dcb273c20a48ed39c7753c090decc30ab8514e8e4b2ac65dddbf6fa8aa109db9",
+    "indexed-paths-gas.json": "0bee6a834b89b7e818a8913714d56ff396a13f0ceb6a329fac125a4d5096dd4f",
+    "experiments.json": "c945efe9ddf889b862ce40dda639adb5dbbe90417a9101055f19e20d8d2be65b"
+  },
+  "prototype_sources": {
+    "single-hop": "ede7b5c1f53dbb187aa12b4dfbc6b7a7582a807935069d7d2b5620fe7a2d0051",
+    "indexed-paths": "3c28871e9f363334b2929e9b570cd0dd50fff808ee442e0f9912b96cb8d6afa9"
+  },
+  "replay_verified": {
+    "single-hop": {
+      "validation_tests": 6,
+      "fuzz_cases": 10000,
+      "gas_matches": true
+    },
+    "indexed-paths": {
+      "validation_tests": 8,
+      "fuzz_cases": 10000,
+      "gas_matches": true
+    }
+  },
+  "prototype_initcode_sha256": {
+    "single-hop": "585d035eced1e6ec5cd470859801961208b44852909f5b613ba300032c34b094",
+    "indexed-paths": "1fb98fae7b7dd655dcf8f897ab95971406b340b1699a965d0270a9c98f8b562c"
+  }
+}

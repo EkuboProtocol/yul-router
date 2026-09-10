@@ -1,0 +1,137 @@
+No files changed, compilation skipped
+error: expected identifier, found `<string>`
+  ╭▸ src/YulRouter.yul:1:8
+  │
+1 │ object "YulRouter" {
+  ╰╴       ━━━━━━━━━━━
+
+
+Warning: the following cheatcode(s) are deprecated and will be removed in future versions:
+  snapshotGasLastCall(string,string): replaced by `snapshotGasLastFrame`
+Ran 69 tests for test/YulRouter.t.sol:YulRouterTest
+[PASS] testFuzz_ConstructorImmutables(address) (runs: 10000, μ: 1498074, ~: 1498020)
+Logs:
+  Bound result 1461501637330902918203684832716283019655932498394
+
+[PASS] testFuzz_ExactInCannotSpendMoreThanSpecifiedAmount(address,uint128,uint128) (runs: 10000, μ: 406923, ~: 409783)
+Logs:
+  Bound result 25592602728299905673
+  Bound result 41423660270770711339
+
+[PASS] testFuzz_ExactOutCannotSpendMoreThanInputThreshold(address,uint128,uint128) (runs: 10000, μ: 374242, ~: 352579)
+Logs:
+  Bound result 25592602728299905673
+  Bound result 41432426263225003581
+
+[PASS] testFuzz_ForwardedUpdateValidation(int128,int128,int128,bool,bool,bool) (runs: 10000, μ: 42053, ~: 42074)
+[PASS] testFuzz_NativeSettlement(uint128,uint128,bool,bool) (runs: 10000, μ: 854286, ~: 852134)
+Logs:
+  Bound result 151
+  Bound result 0
+
+[PASS] testFuzz_PathSigns(int128,int128,uint8) (runs: 10000, μ: 79676, ~: 79406)
+Logs:
+  Bound result 456
+  Bound result 14077
+
+[PASS] testFuzz_QuoteRejectsMalformedAbiBeforeLock(uint256,uint8) (runs: 10000, μ: 39714, ~: 40185)
+[PASS] testFuzz_QuoteRejectsValueBeforeLock(uint256) (runs: 10000, μ: 47281, ~: 47281)
+[PASS] testFuzz_RecipientApprovalIsNeverUsedAsPayer(address,uint128) (runs: 10000, μ: 650485, ~: 652125)
+Logs:
+  Bound result 525380
+
+[FAIL: quote call; counterexample: calldata=0x8d848fb800000000000000000000000000000000000000000000000000000000000042510000000000000000000000000000000000000000000000000000000000000099000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001 args=[16977 [1.697e4], 153, true, false, true]] testFuzz_RouteModesAgree(uint128,uint8,bool,bool,bool) (runs: 3, μ: 1040837, ~: 1041351)
+Logs:
+  Bound result 16977
+
+[PASS] testFuzz_SignedSwapDirections(uint128,bool,bool) (runs: 10000, μ: 1241184, ~: 1248036)
+Logs:
+  Bound result 25456612010622335
+
+[PASS] testFuzz_SignedUpdateValidation(int128,int128,int128,bool,bool) (runs: 10000, μ: 52241, ~: 52242)
+[PASS] testFuzz_SwapParameterEncoding(int128,uint96,uint32,bool,uint8,bytes) (runs: 10000, μ: 45002, ~: 44546)
+[PASS] testFuzz_TransferFromReturnData(bytes,bool,uint8) (runs: 10000, μ: 345280, ~: 339875)
+[PASS] testFuzz_WithdrawalEncoding(address,address,uint128,uint8) (runs: 10000, μ: 56412, ~: 56437)
+Logs:
+  Bound result 156396071902407668240247104453028047532
+  Bound result 2
+
+[PASS] testFuzz_ZeroPathsPreserveExactness(bool,uint8,bool) (runs: 10000, μ: 173182, ~: 172214)
+Logs:
+  Bound result 1
+
+[PASS] testRevert_AdversarialCalldataCannotUseFakePayer() (gas: 346731)
+[PASS] testRevert_ArbitraryForwardeeCannotLeaveThirdTokenDebt() (gas: 722019)
+[PASS] testRevert_DelegateCall() (gas: 233359)
+[PASS] testRevert_EmptyPoolSwapDisallowsPartialByDefault() (gas: 149379)
+[PASS] testRevert_ExactInSlippageDoesNotSpendAllowance() (gas: 200210)
+[PASS] testRevert_ExactOutSlippageDoesNotSpendAllowance() (gas: 201684)
+[PASS] testRevert_ForwardedHopRequiresBalanceUpdate() (gas: 155036)
+[PASS] testRevert_InsufficientNativePayment() (gas: 473468)
+[PASS] testRevert_MixedSignsExactInputFirst() (gas: 1965734)
+[PASS] testRevert_MixedSignsExactOutputFirst() (gas: 1983672)
+[PASS] testRevert_NativeRecipientFailureRollsBackSwap() (gas: 745496)
+[PASS] testRevert_NativeRefundFailureRollsBackSwap() (gas: 536438)
+[PASS] testRevert_NoClaimIntegrationFeesSurface() (gas: 36456)
+[PASS] testRevert_PartialExactOutputCannotReceiveMoreThanSpecified() (gas: 554077)
+[PASS] testRevert_PartialSwapCannotSpendMoreThanSpecified() (gas: 553170)
+[PASS] testRevert_PartialSwapMustBeSingleHop() (gas: 692823)
+[PASS] testRevert_QuoteBubblesCalleeSuppliedFailureMarkerWithoutUnwrappingItTwice() (gas: 189182)
+[PASS] testRevert_QuoteBubblesRouteErrors() (gas: 54168)
+[PASS] testRevert_QuoteBubblesSpoofedQuoteResultInsteadOfReturningIt() (gas: 181024)
+[PASS] testRevert_SignedExclusiveSwapHopRejectsUnauthorizedLocker() (gas: 888613)
+[PASS] testRevert_SignedExclusiveSwapHopRequiresBalanceUpdate() (gas: 154181)
+[PASS] test_CodeSize() (gas: 6551)
+[PASS] test_DeploymentGas() (gas: 1443040)
+[PASS] test_DirectForwardAndQuoteReturnIdenticalData() (gas: 702264)
+[PASS] test_ForwardedExactOutRouteReturnsSignedAmounts() (gas: 479215)
+[PASS] test_ForwardedExactOutputPartialRouteReportsActualAmountsAtPriceLimit() (gas: 486601)
+[PASS] test_ForwardedPartialRouteMovesEmptyMEVCapturePoolToLimitWithoutDebt() (gas: 462587)
+[PASS] test_ForwardedPartialRouteMovesEmptyPoolToLimitWithoutDebt() (gas: 425157)
+[PASS] test_ForwardedPartialRouteMovesEmptyVe33PoolToLimitWithoutDebt() (gas: 457851)
+[PASS] test_ForwardedPartialRouteReportsActualAmountsAtPriceLimit() (gas: 486942)
+[PASS] test_ForwardedRouteCanUseNestedVe33Forward() (gas: 1252631)
+[PASS] test_ForwardedRouteReturnsAmountsToOriginalLocker() (gas: 477150)
+[PASS] test_MaximumHopCount() (gas: 5418994)
+[PASS] test_MaximumPathCount() (gas: 25149881)
+[PASS] test_NativeInputWithRefund() (gas: 851398)
+Logs:
+  Bound result 1000000000000000000
+  Bound result 1000000000000000000
+
+[PASS] test_NativeOutput() (gas: 854040)
+Logs:
+  Bound result 1000000000000000000
+  Bound result 0
+
+[PASS] test_NativeRefundCanReenterRouter() (gas: 1203136)
+[PASS] test_QuoteCoreRouteReturnsAmountsWithoutStateChanges() (gas: 92175)
+[PASS] test_QuoteForwardedExactOutputPartialRouteReturnsActualAmountsWithoutStateChanges() (gas: 282699)
+[PASS] test_QuoteRejectsEveryTruncatedHeader() (gas: 3617154)
+[PASS] test_SameSignExactInputPathsWithZeros() (gas: 530978)
+[PASS] test_SameSignExactOutputPathsWithZeros() (gas: 544790)
+[PASS] test_SdkGeneratedRoutes() (gas: 3978856)
+[PASS] test_SwapExactInCoreHop() (gas: 249867)
+[PASS] test_SwapExactInForwardedHop() (gas: 439604)
+[PASS] test_SwapExactInMEVCaptureForwardedHop() (gas: 972552)
+[PASS] test_SwapExactInMultiMultiHop() (gas: 1481768)
+[PASS] test_SwapExactInSignedExclusiveSwapHop() (gas: 1012981)
+[PASS] test_SwapExactInVe33Hop() (gas: 1008741)
+[PASS] test_TransferFromEmptyReturn() (gas: 299682)
+[PASS] test_TransferFromShortReturnBufferCompatibility() (gas: 12959644)
+[PASS] test_TransferFromTrueReturn() (gas: 336529)
+[PASS] test_WrapperHop() (gas: 253194)
+Suite result: FAILED. 68 passed; 1 failed; 0 skipped; finished in 2.93s (32.75s CPU time)
+
+Ran 1 test suite in 2.93s (2.93s CPU time): 68 tests passed, 1 failed, 0 skipped (69 total tests)
+
+Failing tests:
+Encountered 1 failing test in test/YulRouter.t.sol:YulRouterTest
+[FAIL: quote call; counterexample: calldata=0x8d848fb800000000000000000000000000000000000000000000000000000000000042510000000000000000000000000000000000000000000000000000000000000099000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001 args=[16977 [1.697e4], 153, true, false, true]] testFuzz_RouteModesAgree(uint128,uint8,bool,bool,bool) (runs: 3, μ: 1040837, ~: 1041351)
+
+Encountered a total of 1 failing tests, 68 tests succeeded
+
+Tip: Run `forge test --rerun` to retry only the 1 failed test
+Tip: Run `forge test --debug --match-test <TEST_NAME>` to inspect one failing test in the debugger
+
+Fuzz seed: 0xece5d8ac8f9ab0b2f30c10c563667f531a64e385bfe2952c975bb71a4723e082 (use `--fuzz-seed` to reproduce)

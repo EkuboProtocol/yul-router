@@ -1,0 +1,14 @@
+No files changed, compilation skipped
+
+Warning: the following cheatcode(s) are deprecated and will be removed in future versions:
+  snapshotGasLastCall(string,string): replaced by `snapshotGasLastFrame`
+Ran 6 tests for test/YulRouter.t.sol:YulRouterTest
+[PASS] test_FeasibilityMalformed() (gas: 2844238)
+[PASS] test_FeasibilityMatrix() (gas: 20584543)
+[PASS] test_FeasibilityNativeBudget() (gas: 459658)
+[PASS] test_FeasibilityQuote() (gas: 292379)
+[PASS] test_FeasibilitySlippageAndTokenReturn() (gas: 244272)
+[PASS] test_FeasibilityZeroAndTiny() (gas: 807784)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 23.12ms (21.42ms CPU time)
+
+Ran 1 test suite in 23.68ms (23.12ms CPU time): 6 tests passed, 0 failed, 0 skipped (6 total tests)

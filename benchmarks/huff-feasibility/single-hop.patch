@@ -1,0 +1,841 @@
+--- a/src/YulRouter.yul
++++ b/src/YulRouter.yul
+@@ -111,0 +112 @@
++                if eq(and(byte(0, calldataload(0x24)), 0xc0), 0x80) { compactLocked(routeEnd) }
+@@ -128 +129,3 @@
+-                    recipient := shr(96, calldataload(0x5e))
++                    let recipientOffset := 0x5e
++                    if eq(and(byte(0, calldataload(0x24)), 0xc0), 0x80) { recipientOffset := sub(routeEnd, 20) }
++                    recipient := shr(96, calldataload(recipientOffset))
+@@ -160,0 +164,4 @@
++                if eq(and(byte(0, calldataload(0x24)), 0xc0), 0x80) {
++                    specifiedToken, calculatedToken, totalSpecified, totalCalculated := compactCore(routeEnd)
++                    leave
++                }
+@@ -281,0 +289,552 @@
++                    revert(28, 0x24)
++                }
++            }
++
++            function compactLocked(routeEnd) {
++                switch and(byte(0, calldataload(0x24)), 0x3a)
++                case 0x1a { compactLocked1s8(routeEnd) }
++                case 0x28 { compactLocked0s0(routeEnd) }
++                case 0x18 { compactLocked0s8(routeEnd) }
++                default {
++                    switch and(byte(0, calldataload(0x24)), 2)
++                    case 0 { compactLocked0(routeEnd) }
++                    default { compactLocked1(routeEnd) }
++                }
++            }
++            function compactLocked0s0(routeEnd) {
++                let specifiedToken, calculatedToken, amount, calculated
++                {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := 8
++                let thresholdBytes := 0
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let limit := xor(0x400065a8177fae27, mul(isToken1, 0xffff9a58c9f7f0ae8d3e0684))
++                mstore(100, or(shl(160, limit), or(shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)), shl(31, isToken1))))
++                if iszero(call(gas(), caller(), 0, 0, 132, 0, 32)) { revertExternalCall(0) }
++                let update := mload(0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
++                    revert(28, 0x24)
++                }
++
++                }
++                let payer := calldataload(routeEnd)
++                if shr(160, payer) {
++                    mstore(0, 0x4852c8eb)
++                    mstore(32, specifiedToken)
++                    mstore(64, calculatedToken)
++                    mstore(96, amount)
++                    mstore(128, calculated)
++                    revert(28, 0x84)
++                }
++                let recipient := payer
++                if and(byte(0, calldataload(0x24)), 1) { recipient := shr(96, calldataload(sub(routeEnd, 20))) }
++                let nativeRemaining := calldataload(add(routeEnd, 32))
++
++                    if amount { {
++                    let paymentToken := specifiedToken
++                    let paymentAmount := amount
++                    switch paymentToken
++                    case 0 {
++                        if gt(paymentAmount, nativeRemaining) { revertSelector(0x84e505d2) }
++                        if iszero(call(gas(), caller(), paymentAmount, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                        nativeRemaining := sub(nativeRemaining, paymentAmount)
++                    }
++                    default {
++                        mstore(0, 0xf9b6a796)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                        mstore(0, 0x23b872dd)
++                        mstore(32, payer)
++                        mstore(64, caller())
++                        mstore(96, paymentAmount)
++                        let success := call(gas(), paymentToken, 0, 28, 100, 28, 32)
++                        if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
++                            if returndatasize() { returndatacopy(0,0,returndatasize()) revert(0,returndatasize()) }
++                            revertSelector(0x7939f424)
++                        }
++                        mstore(0, 0x12e103f1)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                    }
++                } }
++                    if calculated { {
++                        mstore(36, calculated)
++                        mstore(20, recipient)
++                        mstore(0, or(shl(160, 0x3ccfd60b), calculatedToken))
++                        if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
++                            returndatacopy(0,0,returndatasize()) revert(0,returndatasize())
++                        }
++                    } }
++
++                if nativeRemaining {
++                    if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                }
++                mstore(0, specifiedToken)
++                mstore(32, calculatedToken)
++                mstore(64, amount)
++                mstore(96, calculated)
++                return(0, 128)
++            }
++
++            function compactLocked0s8(routeEnd) {
++                let specifiedToken, calculatedToken, amount, calculated
++                {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := 8
++                let thresholdBytes := 8
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let limit := xor(0x400065a8177fae27, mul(isToken1, 0xffff9a58c9f7f0ae8d3e0684))
++                mstore(100, or(shl(160, limit), or(shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)), shl(31, isToken1))))
++                if iszero(call(gas(), caller(), 0, 0, 132, 0, 32)) { revertExternalCall(0) }
++                let update := mload(0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
++                    revert(28, 0x24)
++                }
++
++                }
++                let payer := calldataload(routeEnd)
++                if shr(160, payer) {
++                    mstore(0, 0x4852c8eb)
++                    mstore(32, specifiedToken)
++                    mstore(64, calculatedToken)
++                    mstore(96, amount)
++                    mstore(128, calculated)
++                    revert(28, 0x84)
++                }
++                let recipient := payer
++                if and(byte(0, calldataload(0x24)), 1) { recipient := shr(96, calldataload(sub(routeEnd, 20))) }
++                let nativeRemaining := calldataload(add(routeEnd, 32))
++
++                    if amount { {
++                    let paymentToken := specifiedToken
++                    let paymentAmount := amount
++                    switch paymentToken
++                    case 0 {
++                        if gt(paymentAmount, nativeRemaining) { revertSelector(0x84e505d2) }
++                        if iszero(call(gas(), caller(), paymentAmount, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                        nativeRemaining := sub(nativeRemaining, paymentAmount)
++                    }
++                    default {
++                        mstore(0, 0xf9b6a796)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                        mstore(0, 0x23b872dd)
++                        mstore(32, payer)
++                        mstore(64, caller())
++                        mstore(96, paymentAmount)
++                        let success := call(gas(), paymentToken, 0, 28, 100, 28, 32)
++                        if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
++                            if returndatasize() { returndatacopy(0,0,returndatasize()) revert(0,returndatasize()) }
++                            revertSelector(0x7939f424)
++                        }
++                        mstore(0, 0x12e103f1)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                    }
++                } }
++                    if calculated { {
++                        mstore(36, calculated)
++                        mstore(20, recipient)
++                        mstore(0, or(shl(160, 0x3ccfd60b), calculatedToken))
++                        if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
++                            returndatacopy(0,0,returndatasize()) revert(0,returndatasize())
++                        }
++                    } }
++
++                if nativeRemaining {
++                    if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                }
++                mstore(0, specifiedToken)
++                mstore(32, calculatedToken)
++                mstore(64, amount)
++                mstore(96, calculated)
++                return(0, 128)
++            }
++
++            function compactLocked1s8(routeEnd) {
++                let specifiedToken, calculatedToken, amount, calculated
++                {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := 8
++                let thresholdBytes := 8
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++                amount := sub(0, amount)
++                threshold := sub(0, threshold)
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let limit := xor(0x400065a8177fae27, mul(xor(slt(amount, 0), isToken1), 0xffff9a58c9f7f0ae8d3e0684))
++                mstore(100, or(shl(160, limit), or(shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)), shl(31, isToken1))))
++                if iszero(call(gas(), caller(), 0, 0, 132, 0, 32)) { revertExternalCall(0) }
++                let update := mload(0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
++                    revert(28, 0x24)
++                }
++
++                }
++                let payer := calldataload(routeEnd)
++                if shr(160, payer) {
++                    mstore(0, 0x4852c8eb)
++                    mstore(32, specifiedToken)
++                    mstore(64, calculatedToken)
++                    mstore(96, amount)
++                    mstore(128, calculated)
++                    revert(28, 0x84)
++                }
++                let recipient := payer
++                if and(byte(0, calldataload(0x24)), 1) { recipient := shr(96, calldataload(sub(routeEnd, 20))) }
++                let nativeRemaining := calldataload(add(routeEnd, 32))
++
++                    if amount { {
++                        mstore(36, sub(0, amount))
++                        mstore(20, recipient)
++                        mstore(0, or(shl(160, 0x3ccfd60b), specifiedToken))
++                        if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
++                            returndatacopy(0,0,returndatasize()) revert(0,returndatasize())
++                        }
++                    } }
++                    if calculated { {
++                    let paymentToken := calculatedToken
++                    let paymentAmount := sub(0, calculated)
++                    switch paymentToken
++                    case 0 {
++                        if gt(paymentAmount, nativeRemaining) { revertSelector(0x84e505d2) }
++                        if iszero(call(gas(), caller(), paymentAmount, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                        nativeRemaining := sub(nativeRemaining, paymentAmount)
++                    }
++                    default {
++                        mstore(0, 0xf9b6a796)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                        mstore(0, 0x23b872dd)
++                        mstore(32, payer)
++                        mstore(64, caller())
++                        mstore(96, paymentAmount)
++                        let success := call(gas(), paymentToken, 0, 28, 100, 28, 32)
++                        if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
++                            if returndatasize() { returndatacopy(0,0,returndatasize()) revert(0,returndatasize()) }
++                            revertSelector(0x7939f424)
++                        }
++                        mstore(0, 0x12e103f1)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                    }
++                } }
++
++                if nativeRemaining {
++                    if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                }
++                mstore(0, specifiedToken)
++                mstore(32, calculatedToken)
++                mstore(64, amount)
++                mstore(96, calculated)
++                return(0, 128)
++            }
++
++            function compactLocked0(routeEnd) {
++                let specifiedToken, calculatedToken, amount, calculated
++                {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := sub(16, and(flags, 8))
++                let thresholdBytes := mul(iszero(and(flags, 32)), sub(16, shr(1, and(flags, 16))))
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let limit := xor(0x400065a8177fae27, mul(isToken1, 0xffff9a58c9f7f0ae8d3e0684))
++                mstore(100, or(shl(160, limit), or(shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)), shl(31, isToken1))))
++                if iszero(call(gas(), caller(), 0, 0, 132, 0, 32)) { revertExternalCall(0) }
++                let update := mload(0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
++                    revert(28, 0x24)
++                }
++
++                }
++                let payer := calldataload(routeEnd)
++                if shr(160, payer) {
++                    mstore(0, 0x4852c8eb)
++                    mstore(32, specifiedToken)
++                    mstore(64, calculatedToken)
++                    mstore(96, amount)
++                    mstore(128, calculated)
++                    revert(28, 0x84)
++                }
++                let recipient := payer
++                if and(byte(0, calldataload(0x24)), 1) { recipient := shr(96, calldataload(sub(routeEnd, 20))) }
++                let nativeRemaining := calldataload(add(routeEnd, 32))
++
++                    if amount { {
++                    let paymentToken := specifiedToken
++                    let paymentAmount := amount
++                    switch paymentToken
++                    case 0 {
++                        if gt(paymentAmount, nativeRemaining) { revertSelector(0x84e505d2) }
++                        if iszero(call(gas(), caller(), paymentAmount, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                        nativeRemaining := sub(nativeRemaining, paymentAmount)
++                    }
++                    default {
++                        mstore(0, 0xf9b6a796)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                        mstore(0, 0x23b872dd)
++                        mstore(32, payer)
++                        mstore(64, caller())
++                        mstore(96, paymentAmount)
++                        let success := call(gas(), paymentToken, 0, 28, 100, 28, 32)
++                        if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
++                            if returndatasize() { returndatacopy(0,0,returndatasize()) revert(0,returndatasize()) }
++                            revertSelector(0x7939f424)
++                        }
++                        mstore(0, 0x12e103f1)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                    }
++                } }
++                    if calculated { {
++                        mstore(36, calculated)
++                        mstore(20, recipient)
++                        mstore(0, or(shl(160, 0x3ccfd60b), calculatedToken))
++                        if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
++                            returndatacopy(0,0,returndatasize()) revert(0,returndatasize())
++                        }
++                    } }
++
++                if nativeRemaining {
++                    if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                }
++                mstore(0, specifiedToken)
++                mstore(32, calculatedToken)
++                mstore(64, amount)
++                mstore(96, calculated)
++                return(0, 128)
++            }
++
++            function compactLocked1(routeEnd) {
++                let specifiedToken, calculatedToken, amount, calculated
++                {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := sub(16, and(flags, 8))
++                let thresholdBytes := mul(iszero(and(flags, 32)), sub(16, shr(1, and(flags, 16))))
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++                amount := sub(0, amount)
++                threshold := sub(0, threshold)
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let limit := xor(0x400065a8177fae27, mul(xor(slt(amount, 0), isToken1), 0xffff9a58c9f7f0ae8d3e0684))
++                mstore(100, or(shl(160, limit), or(shl(32, and(amount, 0xffffffffffffffffffffffffffffffff)), shl(31, isToken1))))
++                if iszero(call(gas(), caller(), 0, 0, 132, 0, 32)) { revertExternalCall(0) }
++                let update := mload(0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
++                    revert(28, 0x24)
++                }
++
++                }
++                let payer := calldataload(routeEnd)
++                if shr(160, payer) {
++                    mstore(0, 0x4852c8eb)
++                    mstore(32, specifiedToken)
++                    mstore(64, calculatedToken)
++                    mstore(96, amount)
++                    mstore(128, calculated)
++                    revert(28, 0x84)
++                }
++                let recipient := payer
++                if and(byte(0, calldataload(0x24)), 1) { recipient := shr(96, calldataload(sub(routeEnd, 20))) }
++                let nativeRemaining := calldataload(add(routeEnd, 32))
++
++                    if amount { {
++                        mstore(36, sub(0, amount))
++                        mstore(20, recipient)
++                        mstore(0, or(shl(160, 0x3ccfd60b), specifiedToken))
++                        if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
++                            returndatacopy(0,0,returndatasize()) revert(0,returndatasize())
++                        }
++                    } }
++                    if calculated { {
++                    let paymentToken := calculatedToken
++                    let paymentAmount := sub(0, calculated)
++                    switch paymentToken
++                    case 0 {
++                        if gt(paymentAmount, nativeRemaining) { revertSelector(0x84e505d2) }
++                        if iszero(call(gas(), caller(), paymentAmount, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                        nativeRemaining := sub(nativeRemaining, paymentAmount)
++                    }
++                    default {
++                        mstore(0, 0xf9b6a796)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                        mstore(0, 0x23b872dd)
++                        mstore(32, payer)
++                        mstore(64, caller())
++                        mstore(96, paymentAmount)
++                        let success := call(gas(), paymentToken, 0, 28, 100, 28, 32)
++                        if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
++                            if returndatasize() { returndatacopy(0,0,returndatasize()) revert(0,returndatasize()) }
++                            revertSelector(0x7939f424)
++                        }
++                        mstore(0, 0x12e103f1)
++                        mstore(32, paymentToken)
++                        pop(call(gas(), caller(), 0, 28, 36, 0, 0))
++                    }
++                } }
++
++                if nativeRemaining {
++                    if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) { revertSelector(0xf4b3b1bc) }
++                }
++                mstore(0, specifiedToken)
++                mstore(32, calculatedToken)
++                mstore(64, amount)
++                mstore(96, calculated)
++                return(0, 128)
++            }
++
++            function compactCore(routeEnd) -> specifiedToken, calculatedToken, amount, calculated {
++                let flags := byte(0, calldataload(0x24))
++                let threshold
++                {
++                let amountBytes := sub(16, and(flags, 8))
++                let thresholdBytes := mul(iszero(and(flags, 32)), sub(16, shr(1, and(flags, 16))))
++                if iszero(eq(routeEnd, add(add(0x27, add(amountBytes, thresholdBytes)), mul(and(flags, 1), 20)))) { revertSelector(0x84e505d2) }
++                amount := shr(sub(256, mul(amountBytes, 8)), calldataload(0x27))
++                // Bound unsigned magnitude so it fits the existing signed int128 Core interface.
++                if shr(127, amount) { revertSelector(0x84e505d2) }
++                threshold := shr(sub(256, mul(thresholdBytes, 8)), calldataload(add(0x27, amountBytes)))
++                }
++                if and(flags, 2) {
++                    amount := sub(0, amount)
++                    threshold := sub(0, threshold)
++                }
++                let poolIndex := shr(240, calldataload(0x25))
++                if iszero(lt(poolIndex, 6)) { revertSelector(0x84e505d2) }
++                mstore(0, 0)
++                datacopy(4, add(dataoffset("Pools"), mul(poolIndex, 96)), 96)
++                let token0 := mload(4)
++                let token1 := mload(36)
++                let config := mload(68)
++                let isToken1 := and(shr(2, flags), 1)
++                specifiedToken := mload(add(4, mul(isToken1, 32)))
++                calculatedToken := mload(sub(36, mul(isToken1, 32)))
++                let update := coreSwap(token0, token1, config, amount, isToken1, resolveLimit(amount, isToken1, 0), 0)
++                let specifiedDelta := sar(128, update)
++                let calculatedDelta := signextend(15, update)
++                if isToken1 { specifiedDelta := calculatedDelta calculatedDelta := sar(128, update) }
++                if iszero(eq(specifiedDelta, amount)) { revertSelector(0xe3648855) }
++                calculated := sub(0, calculatedDelta)
++                if slt(calculated, threshold) {
++                    mstore(0, 0xe65f682d)
++                    mstore(32, calculated)
+@@ -672,0 +1232 @@
++        data "Pools" hex"000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec70000000000000000000000000000000000000000000053e2d6238da300000000000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7000000000000000000000000f939e0a03fb07f59a73314e73794be0e57ac1b4e0000000000000000000000000000000000000000000053e2d6238da300000000000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000f939e0a03fb07f59a73314e73794be0e57ac1b4e0000000000000000000000000000000000000000000053e2d6238da3000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000000000000000000000000053e2d6238da3000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec70000000000000000000000000000000000000000000053e2d6238da3000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f939e0a03fb07f59a73314e73794be0e57ac1b4e0000000000000000000000000000000000000000000053e2d6238da300000000"
+--- a/test/YulRouter.t.sol
++++ b/test/YulRouter.t.sol
+@@ -191,0 +192,2 @@
++    address private comparisonHuff;
++    address private comparisonBaseline;
+@@ -207,3 +209,3 @@
+-    address private constant TOKEN0 = 0x1111111111111111111111111111111111111111;
+-    address private constant TOKEN1 = 0x2222222222222222222222222222222222222222;
+-    address private constant TOKEN2 = 0x4444444444444444444444444444444444444444;
++    address private constant TOKEN0 = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
++    address private constant TOKEN1 = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
++    address private constant TOKEN2 = 0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E;
+@@ -267,0 +270,259 @@
++        if (vm.envOr("COMPARISON", false)) {
++            bytes memory code = vm.parseBytes(vm.readFile("out/huff-init.hex"));
++            address h;
++            assembly ("memory-safe") { h := create(0, add(code, 32), mload(code)) }
++            comparisonHuff = h;
++            string memory referenceJson = vm.readFile("out/ComparisonBaseline.json");
++            bytes memory baselineCode = bytes.concat(vm.parseJsonBytes(referenceJson, ".bytecode.object"), abi.encode(CORE_ADDRESS));
++            assembly ("memory-safe") { h := create(0, add(baselineCode,32), mload(baselineCode)) }
++            comparisonBaseline = h;
++        }
++    }
++
++    function test_FeasibilityMalformed() external {
++        (bytes memory data,) = _feasibilityPayloads(0, false, false, true, SWAP_AMOUNT, 0, true);
++        deal(TOKEN0, address(this), 2 ether);
++        IERC20(TOKEN0).approve(router, 2 ether);
++        for (uint256 n; n < data.length; ++n) {
++            bytes memory shortData = new bytes(n);
++            for (uint256 i; i < n; ++i) shortData[i] = data[i];
++            (bool ok,) = router.call(shortData);
++            assertFalse(ok, "truncated compact route");
++        }
++        for (uint256 n = 1; n <= 64; ++n) {
++            (bool ok,) = router.call(bytes.concat(data, new bytes(n)));
++            assertFalse(ok, "appended compact route");
++        }
++        data[2] = bytes1(uint8(6));
++        (bool ok, bytes memory result) = router.call(data);
++        assertFalse(ok); assertEq(result, abi.encodeWithSelector(bytes4(0x84e505d2)), "dictionary bound");
++        (data,) = _feasibilityPayloads(0, false, false, true, uint128(1) << 127, 0, true);
++        (ok, result) = router.call(data);
++        assertFalse(ok); assertEq(result, abi.encodeWithSelector(bytes4(0x84e505d2)), "amount bound");
++        assertEq(IERC20(TOKEN0).balanceOf(address(this)), 2 ether);
++        assertEq(IERC20(TOKEN0).allowance(address(this), router), 2 ether);
++    }
++
++    function test_FeasibilitySlippageAndTokenReturn() external {
++        (bytes memory data,) = _feasibilityPayloads(0, false, false, true, SWAP_AMOUNT, 2 ether, true);
++        deal(TOKEN0, address(this), 2 ether);
++        IERC20(TOKEN0).approve(router, 2 ether);
++        (bool ok, bytes memory result) = router.call(data);
++        assertFalse(ok); assertEq(bytes4(result), bytes4(0xe65f682d));
++        (data,) = _feasibilityPayloads(0, false, false, true, SWAP_AMOUNT, 0, true);
++        vm.mockCall(TOKEN0, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(false));
++        (ok, result) = router.call(data);
++        assertFalse(ok); assertEq(result, abi.encode(false), "false ERC20 return rejected");
++    }
++
++    function test_FeasibilityQuote() external {
++        (bytes memory data,) = _feasibilityPayloads(0, false, false, true, SWAP_AMOUNT, 0, true);
++        deal(TOKEN0, address(this), 2 ether);
++        IERC20(TOKEN0).approve(router, 2 ether);
++        uint256 beforeBalance = IERC20(TOKEN0).balanceOf(address(this));
++        (bool ok, bytes memory quoteResult) = router.call(abi.encodeWithSignature("quote(bytes)", data));
++        assertTrue(ok, "compact quote");
++        assertEq(IERC20(TOKEN0).balanceOf(address(this)), beforeBalance);
++        assertEq(IERC20(TOKEN1).balanceOf(address(0xB0B)), 0);
++        bytes memory swapResult;
++        (ok, swapResult) = router.call(data);
++        assertTrue(ok); assertEq(swapResult, quoteResult);
++    }
++
++    function test_FeasibilityNativeBudget() external {
++        _initializeAndSeed(_feasibilityPool(3));
++        (bytes memory data,) = _feasibilityPayloads(3, false, false, true, SWAP_AMOUNT, 0, true);
++        vm.deal(address(this), SWAP_AMOUNT);
++        (bool ok, bytes memory result) = router.call{value: SWAP_AMOUNT - 1}(data);
++        assertFalse(ok); assertEq(result, abi.encodeWithSelector(bytes4(0x84e505d2)));
++    }
++
++    function test_FeasibilityZeroAndTiny() external {
++        _feasibilityCase(0, false, false, true, 0, false, true, "zero_input");
++        _feasibilityCase(0, true, true, true, 0, false, true, "zero_output");
++        _feasibilityCase(0, true, false, true, 10038, false, true, "tiny_output");
++    }
++
++    function test_FeasibilityMatrix() external {
++        for (uint8 pool; pool < 6; ++pool) {
++            for (uint8 mode; mode < 4; ++mode) {
++                _feasibilityCase(pool, (mode & 1) != 0, (mode & 2) != 0, true, 1 ether, false, true, string.concat(vm.toString(pool), "_", vm.toString(mode)));
++            }
++        }
++        _feasibilityCase(0, false, false, false, 1 ether, true, true, "default_recipient_bounded");
++        _feasibilityCase(0, true, true, false, 1 ether, true, true, "default_recipient_out");
++        _feasibilityCase(0, false, false, true, 100 ether, true, true, "large_input_bounded");
++        _feasibilityCase(0, true, true, true, 100 ether, true, true, "large_output");
++        _feasibilityCase(0, false, false, true, 1 ether, true, false, "unknown_input_bounded");
++        _feasibilityCase(0, true, true, true, 1 ether, true, false, "unknown_output");
++    }
++
++    function testFuzz_Feasibility(uint8 poolSeed, bool exactOut, bool isToken1, bool customRecipient, uint96 amountSeed, bool boundedInput) external {
++        uint128 amount = uint128(bound(amountSeed, 1, 100 ether));
++        _feasibilityCase(poolSeed % 6, exactOut, isToken1, customRecipient, amount, boundedInput, true, "");
++    }
++
++    function _feasibilityPool(uint8 pool) private pure returns (PoolKey memory key) {
++        if (pool == 0) return _poolKey(TOKEN0, TOKEN1);
++        if (pool == 1) return _poolKey(TOKEN1, TOKEN2);
++        if (pool == 2) return _poolKey(TOKEN0, TOKEN2);
++        return _poolKey(address(0), pool == 3 ? TOKEN0 : pool == 4 ? TOKEN1 : TOKEN2);
++    }
++
++    function _minimalInteger(uint256 value) private pure returns (bytes memory data) {
++        uint256 n; uint256 v = value;
++        while (v != 0) { ++n; v >>= 8; }
++        data = new bytes(n);
++        for (uint256 i; i < n; ++i) data[i] = bytes1(uint8(value >> (8 * (n - i - 1))));
++    }
++
++    function _feasibilityPayloads(uint8 pool, bool exactOut, bool isToken1, bool customRecipient, uint128 amount, uint128 threshold, bool known)
++        private pure returns (bytes memory compactData, bytes memory huffData)
++    {
++        PoolKey memory key = _feasibilityPool(pool);
++        address specified = isToken1 ? key.token1 : key.token0;
++        address calculated = isToken1 ? key.token0 : key.token1;
++        address recipient = address(0xB0B);
++        uint8 flags = 0x80 | (customRecipient ? 1 : 0) | (exactOut ? 2 : 0) | (isToken1 ? 4 : 0);
++        bytes memory compactAmount = abi.encodePacked(bytes16(amount));
++        if (amount <= type(uint64).max) { flags |= 8; compactAmount = abi.encodePacked(bytes8(uint64(amount))); }
++        bytes memory compactThreshold = abi.encodePacked(bytes16(threshold));
++        if (threshold == 0) { flags |= 32; compactThreshold = bytes(""); }
++        else if (threshold <= type(uint64).max) { flags |= 16; compactThreshold = abi.encodePacked(bytes8(uint64(threshold))); }
++        compactData = abi.encodePacked(bytes1(flags), bytes2(uint16(pool)), compactAmount, compactThreshold, customRecipient ? abi.encodePacked(bytes20(recipient)) : bytes(""));
++        bytes memory ha = _minimalInteger(amount);
++        bytes memory ht = _minimalInteger(exactOut ? uint256(threshold) + 1 : threshold);
++        uint8 specifiedId = known ? _huffTokenId(specified) : 255;
++        uint8 calculatedId = known ? _huffTokenId(calculated) : 255;
++        huffData = abi.encodePacked(bytes1(uint8(customRecipient ? 1 : 0)), bytes1(uint8(ha.length)), bytes1(uint8(ht.length)), bytes1(specifiedId), bytes1(calculatedId), hex"0000", bytes1(uint8(exactOut ? 1 : 0)), ht, specifiedId == 255 ? abi.encodePacked(bytes20(specified)) : bytes(""), calculatedId == 255 ? abi.encodePacked(bytes20(calculated)) : bytes(""), ha, hex"000000", bytes8(FEE), bytes4(0), customRecipient ? abi.encodePacked(bytes20(recipient)) : bytes(""));
++    }
++
++    function _huffTokenId(address token) private pure returns (uint8) {
++        if (token == address(0)) return 0;
++        if (token == TOKEN0) return 214;
++        if (token == TOKEN1) return 220;
++        if (token == TOKEN2) return 223;
++        return 255;
++    }
++
++    function _feasibilityCase(uint8 pool, bool exactOut, bool isToken1, bool customRecipient, uint128 amount, bool boundedInput, bool known, string memory label) private {
++        PoolKey memory key = _feasibilityPool(pool);
++        if (pool != 0) _initializeAndSeed(key);
++        address specified = isToken1 ? key.token1 : key.token0;
++        address calculated = isToken1 ? key.token0 : key.token1;
++        address input = exactOut ? calculated : specified;
++        address output = exactOut ? specified : calculated;
++        address recipient = customRecipient ? address(0xB0B) : address(this);
++        uint128 threshold = exactOut ? amount * 2 : boundedInput ? amount / 2 : 0;
++        (bytes memory compactData, bytes memory huffData) = _feasibilityPayloads(pool, exactOut, isToken1, customRecipient, amount, threshold, known);
++        uint256 value;
++        if (input == address(0)) { value = exactOut ? uint256(amount) * 2 : amount; vm.deal(address(this), value); }
++        else { deal(input, address(this), uint256(amount) * 2); IERC20(input).approve(router, uint256(amount) * 2); }
++        bytes memory huffCode = comparisonHuff.code;
++        assertGt(huffCode.length, 0, "Huff reference missing");
++        uint256 state = vm.snapshotState();
++        vm.cool(CORE_ADDRESS); vm.cool(key.token0); vm.cool(key.token1); vm.cool(router); vm.cool(recipient);
++        vm.record();
++        (bool success, bytes memory result) = router.call{value: value}(compactData);
++        uint256 yulGas = vm.snapshotGasLastCall("matrix", string.concat(label, "_yul"));
++        if (!success) {
++            bytes memory compactFailure = result;
++            vm.revertToState(state);
++            bytes memory baselineCode = comparisonBaseline.code;
++            // Baseline 15f0ed2 immutableReferences.self: offset 34, length 32.
++            address target = router;
++            assembly ("memory-safe") { mstore(add(baselineCode, 66), target) }
++            vm.etch(router, baselineCode);
++            bytes memory originalData = _encodeSwapRouteWithAmounts(recipient, bytes1(0), address(0), key, specified, calculated, exactOut ? -int128(threshold) : int128(threshold), exactOut ? -int128(amount) : int128(amount));
++            (success, result) = router.call{value: value}(originalData);
++            assertFalse(success, "prototype rejected a baseline success");
++            assertEq(result, compactFailure, "baseline rejection differs");
++            vm.revertToState(state);
++            return;
++        }
++        (address rs, address rc, int256 ra, int256 rb) = _decodeRouteResult(result);
++        assertEq(rs, specified); assertEq(rc, calculated);
++        assertEq(ra, exactOut ? -int256(uint256(amount)) : int256(uint256(amount)));
++        (, bytes32[] memory coreWrites) = vm.accesses(CORE_ADDRESS);
++        bytes32[] memory finalCoreValues = new bytes32[](coreWrites.length);
++        for (uint256 i; i < coreWrites.length; ++i) finalCoreValues[i] = vm.load(CORE_ADDRESS, coreWrites[i]);
++        uint256 paidBalance = _feasibilityBalance(input, address(this));
++        uint256 receivedBalance = _feasibilityBalance(output, recipient);
++        uint256 routerNative = router.balance;
++        uint256 coreNative = CORE_ADDRESS.balance;
++        uint256 inputCore = _feasibilityBalance(input, CORE_ADDRESS);
++        uint256 outputCore = _feasibilityBalance(output, CORE_ADDRESS);
++        vm.revertToState(state);
++        vm.etch(router, huffCode);
++        vm.cool(CORE_ADDRESS); vm.cool(key.token0); vm.cool(key.token1); vm.cool(router); vm.cool(recipient);
++        (success, result) = router.call{value: value}(huffData);
++        uint256 huffGas = vm.snapshotGasLastCall("matrix", string.concat(label, "_huff"));
++        assertTrue(success, "Huff call");
++        assertEq(abi.decode(result, (uint256)), uint256(rb < 0 ? -rb : rb), "calculated amount");
++        assertEq(_feasibilityBalance(input, address(this)), paidBalance, "payer balance");
++        assertEq(_feasibilityBalance(output, recipient), receivedBalance, "recipient balance");
++        assertEq(router.balance, routerNative); assertEq(CORE_ADDRESS.balance, coreNative);
++        assertEq(_feasibilityBalance(input, CORE_ADDRESS), inputCore); assertEq(_feasibilityBalance(output, CORE_ADDRESS), outputCore);
++        for (uint256 i; i < coreWrites.length; ++i) assertEq(vm.load(CORE_ADDRESS, coreWrites[i]), finalCoreValues[i], "Core storage");
++        vm.revertToState(state);
++        if (bytes(label).length != 0) { vm.snapshotValue("matrix", string.concat(label,"_difference"), yulGas > huffGas ? yulGas - huffGas : huffGas - yulGas); }
++    }
++
++    function _feasibilityBalance(address token, address owner) private view returns (uint256) {
++        return token == address(0) ? owner.balance : IERC20(token).balanceOf(owner);
++    }
++
++    function test_CompareHuffCore() external { _compareHuffCore(false); }
++    function test_CompareHuffCoreExactOut() external { _compareHuffCore(true); }
++    function _compareHuffCore(bool exactOut) private {
++        bytes memory code = vm.parseBytes(vm.readFile("out/huff-init.hex"));
++        address huff;
++        assembly ("memory-safe") { huff := create(0, add(code, 32), mload(code)) }
++        assertTrue(huff != address(0), "deploy Huff");
++        address specified = exactOut ? TOKEN1 : TOKEN0;
++        address calculated = exactOut ? TOKEN0 : TOKEN1;
++        bytes memory yulData = _encodeSwapRouteWithAmounts(address(this), bytes1(0), address(0), _poolKey(), specified, calculated, exactOut ? -int128(2 ether) : int128(0), exactOut ? -int128(SWAP_AMOUNT) : int128(SWAP_AMOUNT));
++        if (vm.envOr("COMPACT", false)) {
++            yulData = abi.encodePacked(bytes1(uint8(exactOut ? 0x83 : 0x81)), bytes16(SWAP_AMOUNT), bytes16(uint128(exactOut ? 2 ether : 0)), bytes20(specified), bytes20(calculated), bytes8(FEE), bytes4(0), bytes20(address(this)));
++        }
++        if (vm.envOr("COMPACT_VAR", false)) {
++            yulData = abi.encodePacked(bytes1(uint8(exactOut ? 0x83 : 0x81)), bytes1(uint8(8)), bytes1(uint8(exactOut ? 8 : 0)), bytes20(specified), bytes20(calculated), bytes8(FEE), bytes4(0), bytes8(uint64(SWAP_AMOUNT)), exactOut ? abi.encodePacked(bytes8(uint64(2 ether))) : bytes(""), bytes20(address(this)));
++        }
++        if (vm.envOr("COMPACT_POOL", false)) {
++            yulData = abi.encodePacked(bytes1(uint8(exactOut ? 0x87 : 0x81)), bytes2(0), bytes16(SWAP_AMOUNT), bytes16(uint128(exactOut ? 2 ether : 0)), bytes20(address(this)));
++        }
++        if (vm.envOr("COMPACT_SMALL", false)) {
++            yulData = abi.encodePacked(bytes1(uint8(exactOut ? 0x9f : 0xa9)), bytes2(0), bytes8(uint64(SWAP_AMOUNT)), exactOut ? abi.encodePacked(bytes8(uint64(2 ether))) : bytes(""), bytes20(address(this)));
++        }
++        bytes memory huffData = abi.encodePacked(bytes1(uint8(1)), bytes1(uint8(8)), bytes1(uint8(exactOut ? 8 : 0)), hex"ffff0000", bytes1(uint8(exactOut ? 1 : 0)), exactOut ? abi.encodePacked(bytes8(uint64(2 ether + 1))) : bytes(""), bytes20(specified), bytes20(calculated), bytes8(uint64(SWAP_AMOUNT)), hex"000000", bytes8(FEE), bytes4(0), bytes20(address(this)));
++        if (vm.envOr("HUFF_KNOWN", false)) {
++            huffData = abi.encodePacked(bytes1(uint8(1)), bytes1(uint8(8)), bytes1(uint8(exactOut ? 8 : 0)), bytes1(uint8(exactOut ? 220 : 214)), bytes1(uint8(exactOut ? 214 : 220)), hex"0000", bytes1(uint8(exactOut ? 1 : 0)), exactOut ? abi.encodePacked(bytes8(uint64(2 ether + 1))) : bytes(""), bytes8(uint64(SWAP_AMOUNT)), hex"000000", bytes8(FEE), bytes4(0), bytes20(address(this)));
++        }
++        deal(TOKEN0, address(this), 2 ether);
++        IERC20(TOKEN0).approve(router, 2 ether);
++        IERC20(TOKEN0).approve(huff, 2 ether);
++        vm.cool(CORE_ADDRESS); vm.cool(TOKEN0); vm.cool(TOKEN1); vm.cool(router); vm.cool(huff);
++        string memory suffix = exactOut ? "_exact_out" : "_exact_in";
++        uint256 state = vm.snapshotState();
++        (bool ok, bytes memory result) = router.call(yulData);
++        vm.snapshotGasLastCall("comparison", string.concat("yul",suffix));
++        assertTrue(ok, "Yul call");
++        (,,,int256 amount) = _decodeRouteResult(result);
++        uint256 balance = IERC20(TOKEN1).balanceOf(address(this));
++        uint256 inputBalance = IERC20(TOKEN0).balanceOf(address(this));
++        vm.revertToState(state);
++        vm.cool(CORE_ADDRESS); vm.cool(TOKEN0); vm.cool(TOKEN1); vm.cool(router); vm.cool(huff);
++        (ok, result) = huff.call(huffData);
++        vm.snapshotGasLastCall("comparison", string.concat("huff",suffix));
++        assertTrue(ok, "Huff call");
++        assertEq(abi.decode(result,(uint256)), uint256(amount < 0 ? -amount : amount));
++        assertEq(IERC20(TOKEN1).balanceOf(address(this)), balance);
++        assertEq(IERC20(TOKEN0).balanceOf(address(this)), inputBalance);
++        vm.snapshotValue("comparison", string.concat("huff_calldata_bytes",suffix), huffData.length);
++        vm.snapshotValue("comparison", string.concat("yul_calldata_bytes",suffix), yulData.length);
++        vm.snapshotValue("comparison", "huff_runtime_bytes", huff.code.length);
++        uint256 yulIntrinsic = 21000; uint256 huffIntrinsic = 21000;
++        for (uint256 i; i < yulData.length; ++i) yulIntrinsic += yulData[i] == 0 ? 4 : 16;
++        for (uint256 i; i < huffData.length; ++i) huffIntrinsic += huffData[i] == 0 ? 4 : 16;
++        vm.snapshotValue("comparison", string.concat("yul_intrinsic", suffix), yulIntrinsic);
++        vm.snapshotValue("comparison", string.concat("huff_intrinsic", suffix), huffIntrinsic);

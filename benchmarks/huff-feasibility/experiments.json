@@ -1,0 +1,526 @@
+[
+  {
+    "variant": "baseline",
+    "source_sha256": "e2fdf1c70e4ac091417eb6be6de41439018e36838d4473d2429fbd64f9f99b96",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "184",
+      "yul_calldata_bytes_exact_out": "184",
+      "yul_exact_in": "102952",
+      "yul_exact_out": "103703"
+    }
+  },
+  {
+    "variant": "compact-core-inline",
+    "source_sha256": "eff7a38669018e84b8c8ed8812e966335400226ec524b075e5cca81af8fa1834",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101260",
+      "yul_exact_out": "101806",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-core-inline-pay",
+    "source_sha256": "2b8564bedfa6b8598f92f10e2eac362e08d2246923baef59820df5bfeaab1803",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101194",
+      "yul_exact_out": "101756",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-direct-settle",
+    "source_sha256": "28b5c0a49081711805fdf780eea813760ed1eda1df35f27b505ecb6e3802ea47",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101336",
+      "yul_exact_out": "101890",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-flat",
+    "source_sha256": "96cf8667fc9fbbc1ea8bedeb6fc612ece0e39bef01ceeb6a9628297d2223aebb",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101420",
+      "yul_exact_out": "101998",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact",
+    "source_sha256": "f4f4a947ebffab98c51ed361a119f7944c9a160aa83243a463b5a48de6a85dfa",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101522",
+      "yul_exact_out": "102100",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-inline",
+    "source_sha256": "ab51e8358c1641bdc601de08b609cae8b961a6051d46fcf78eb3c8330f7cbfe8",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101369",
+      "yul_exact_out": "101953",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-memory",
+    "source_sha256": "f2881ac44977b75421aff793b6ec935e8aeab30c88bae396c992bc3fc08ff822",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101420",
+      "yul_exact_out": "101998",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-pool",
+    "source_sha256": "51638122c13921138b53c86b9962d3e1e1e1561cd3dedc4d0555d6cce0a02593",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100479",
+      "yul_exact_out": "101046",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "compact-standalone",
+    "source_sha256": "8cdc1542e0cf55cec07b2b33099eb10a070c54a3c46641271035cacccdb00bb8",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101273",
+      "yul_exact_out": "101829",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-standalone-inline",
+    "source_sha256": "706d62048691ad8fefe921e1ba8323e4f9f647dbc85798ddc83cc0c686d2e784",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "105",
+      "yul_calldata_bytes_exact_out": "105",
+      "yul_exact_in": "101209",
+      "yul_exact_out": "101757",
+      "yul_intrinsic_exact_in": "22296",
+      "yul_intrinsic_exact_out": "22368"
+    }
+  },
+  {
+    "variant": "compact-variable",
+    "source_sha256": "880b3b3e544014e57d8c7695b20c0f1771d401a263bb0bc8f2bffdff174cccb7",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "83",
+      "yul_calldata_bytes_exact_out": "91",
+      "yul_exact_in": "101278",
+      "yul_exact_out": "101868",
+      "yul_intrinsic_exact_in": "22220",
+      "yul_intrinsic_exact_out": "22336"
+    }
+  },
+  {
+    "variant": "compact-variable-pay",
+    "source_sha256": "3ce4704454e968c016b4513957f6d54668112ef8bd1dc96018fee21fdb5b8825",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_intrinsic_exact_in": "22276",
+      "huff_intrinsic_exact_out": "22416",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "83",
+      "yul_calldata_bytes_exact_out": "91",
+      "yul_exact_in": "101218",
+      "yul_exact_out": "101824",
+      "yul_intrinsic_exact_in": "22220",
+      "yul_intrinsic_exact_out": "22336"
+    }
+  },
+  {
+    "variant": "fast-helper",
+    "source_sha256": "2d80ed7022784208fd317f45c16794f682260318107ee42a939807d37b08996a",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "91",
+      "huff_calldata_bytes_exact_out": "99",
+      "huff_exact_in": "100999",
+      "huff_exact_out": "101567",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "184",
+      "yul_calldata_bytes_exact_out": "184",
+      "yul_exact_in": "102694",
+      "yul_exact_out": "103426"
+    }
+  },
+  {
+    "variant": "known-pool",
+    "source_sha256": "a4e6faae194291e8d1501331c43e50fe54fd753930cd4c45293daf11303bb11d",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100479",
+      "yul_exact_out": "101046",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-pool-specialized",
+    "source_sha256": "47658c23bc9496908c2eb6361475f5a096004c1334fc1cc6af84db3a7cf7a4ac",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100437",
+      "yul_exact_out": "101031",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-pool-specialized-return-memory",
+    "source_sha256": "da2c7e4ffc46b3c34cf4e06704ce0b059ec5e315705dd2bdf662e72b25ebc6dc",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100478",
+      "yul_exact_out": "101048",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-rotate",
+    "source_sha256": "4de6d09bf2a54f74432ea14606e20b63b6763295ddeeecfb7a5cdcb800c6bdda",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100426",
+      "yul_exact_out": "101039",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-rotate-return-memory",
+    "source_sha256": "78dcb2c1bc6d4f65f8383aa1331af3645075a30b5af90610196c9a30b71071be",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100467",
+      "yul_exact_out": "101057",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-shift",
+    "source_sha256": "57964b1f490b14e2d971eb2d537ac15cdfe9d411cc6d2b811b372fae9df4ad00",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100444",
+      "yul_exact_out": "101021",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-shift-return-memory",
+    "source_sha256": "051808cdc14507a9cd1d5d4122e91600739f40c60d71e08f4e280ae3af39f16b",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100479",
+      "yul_exact_out": "101039",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-small",
+    "source_sha256": "f8c2c5869790e3eba74752010e42f4d32df5873af7e7438d8c0cef1603e4bf66",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "31",
+      "yul_calldata_bytes_exact_out": "39",
+      "yul_exact_in": "100415",
+      "yul_exact_out": "101028",
+      "yul_intrinsic_exact_in": "21448",
+      "yul_intrinsic_exact_out": "21552"
+    }
+  },
+  {
+    "variant": "known-small-scoped-decode",
+    "source_sha256": "e110491197234404cbb8b244e0a6849f9bd23d6b3e975e98cc4259368970744c",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "31",
+      "yul_calldata_bytes_exact_out": "39",
+      "yul_exact_in": "100415",
+      "yul_exact_out": "101028",
+      "yul_intrinsic_exact_in": "21448",
+      "yul_intrinsic_exact_out": "21552"
+    }
+  },
+  {
+    "variant": "known-small-scoped",
+    "source_sha256": "75825e6ea677a07f77b6512a3e6fa38ef26eb779796c6ddfda1b9cd4bb8167e6",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "31",
+      "yul_calldata_bytes_exact_out": "39",
+      "yul_exact_in": "100415",
+      "yul_exact_out": "101028",
+      "yul_intrinsic_exact_in": "21448",
+      "yul_intrinsic_exact_out": "21552"
+    }
+  },
+  {
+    "variant": "known-token-load",
+    "source_sha256": "d336d2e6e26abd8cebcd2a2e0c99a15126e57be811b590f9856a74051b678864",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100410",
+      "yul_exact_out": "100986",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-token-load-scoped",
+    "source_sha256": "e30dda630624ee3ba08c204bc66780eadf5920774b1e9d5c4f49af7411e50d07",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "55",
+      "yul_calldata_bytes_exact_out": "55",
+      "yul_exact_in": "100410",
+      "yul_exact_out": "100986",
+      "yul_intrinsic_exact_in": "21544",
+      "yul_intrinsic_exact_out": "21616"
+    }
+  },
+  {
+    "variant": "known-widths",
+    "source_sha256": "5f412f50c37f13a7838cfa23622c608871e6d472952da5c35b867f9737e6554d",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "31",
+      "yul_calldata_bytes_exact_out": "39",
+      "yul_exact_in": "100293",
+      "yul_exact_out": "100954",
+      "yul_intrinsic_exact_in": "21448",
+      "yul_intrinsic_exact_out": "21552"
+    }
+  },
+  {
+    "variant": "known-widths-order",
+    "source_sha256": "9ee6052bc4b975b4a91b5b260f741eb67174571d85eee20c1390d655784c35c2",
+    "gas": {
+      "huff_calldata_bytes_exact_in": "51",
+      "huff_calldata_bytes_exact_out": "59",
+      "huff_exact_in": "100346",
+      "huff_exact_out": "100920",
+      "huff_intrinsic_exact_in": "21636",
+      "huff_intrinsic_exact_out": "21776",
+      "huff_runtime_bytes": "24554",
+      "yul_calldata_bytes_exact_in": "31",
+      "yul_calldata_bytes_exact_out": "39",
+      "yul_exact_in": "100339",
+      "yul_exact_out": "100890",
+      "yul_intrinsic_exact_in": "21448",
+      "yul_intrinsic_exact_out": "21552"
+    }
+  }
+]

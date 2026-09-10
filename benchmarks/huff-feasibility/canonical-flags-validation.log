@@ -1,0 +1,10 @@
+No files changed, compilation skipped
+
+Ran 1 test for test/YulRouter.t.sol:YulRouterTest
+[PASS] testFuzz_RouteModesAgree(uint128,uint8,bool,bool,bool) (runs: 10000, μ: 896322, ~: 927943)
+Logs:
+  Bound result 5867
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 437.48ms (434.22ms CPU time)
+
+Ran 1 test suite in 437.96ms (437.48ms CPU time): 1 tests passed, 0 failed, 0 skipped (1 total tests)
