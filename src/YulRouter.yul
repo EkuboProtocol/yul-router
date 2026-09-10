@@ -129,8 +129,20 @@ object "YulRouter" {
                 }
 
                 let nativeRemaining := calldataload(add(routeEnd, 0x20))
-                nativeRemaining := settle(specifiedToken, totalSpecified, payer, recipient, nativeRemaining)
-                nativeRemaining := settle(calculatedToken, sub(0, totalCalculated), payer, recipient, nativeRemaining)
+                // Settle each endpoint directly to avoid forwarding five live values
+                // through a helper. Preserve specified-before-calculated call order.
+                if sgt(totalSpecified, 0) {
+                    nativeRemaining := pay(specifiedToken, payer, totalSpecified, nativeRemaining)
+                }
+                if slt(totalSpecified, 0) {
+                    withdraw(specifiedToken, recipient, sub(0, totalSpecified))
+                }
+                if slt(totalCalculated, 0) {
+                    nativeRemaining := pay(calculatedToken, payer, sub(0, totalCalculated), nativeRemaining)
+                }
+                if sgt(totalCalculated, 0) {
+                    withdraw(calculatedToken, recipient, totalCalculated)
+                }
 
                 if nativeRemaining {
                     if iszero(call(gas(), payer, nativeRemaining, 0, 0, 0, 0)) {
@@ -569,18 +581,6 @@ object "YulRouter" {
                     revertSelector(0xe3648855) // PartialSwapsDisallowed()
                 }
                 nextAmount := sub(0, calculatedDelta)
-            }
-
-            function settle(token, signedAmount, payer, recipient, nativeRemaining) -> updatedNativeRemaining {
-                if sgt(signedAmount, 0) {
-                    updatedNativeRemaining := pay(token, payer, signedAmount, nativeRemaining)
-                    leave
-                }
-
-                if slt(signedAmount, 0) {
-                    withdraw(token, recipient, sub(0, signedAmount))
-                }
-                updatedNativeRemaining := nativeRemaining
             }
 
             function pay(token, payer, amount, nativeRemaining) -> updatedNativeRemaining {

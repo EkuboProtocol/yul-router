@@ -1,0 +1,135 @@
+Compiling 1 files with Solc 0.8.33
+Solc 0.8.33 finished in 23.68s
+Compiler run successful with warnings:
+Warning (8429): Virtual modifiers are deprecated and scheduled for removal.
+   --> lib/solady/src/auth/Ownable.sol:274:5:
+    |
+274 |     modifier onlyOwner() virtual {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (4591): There are more than 256 warnings. Ignoring the rest.
+
+Warning: the following cheatcode(s) are deprecated and will be removed in future versions:
+  snapshotGasLastCall(string,string): replaced by `snapshotGasLastFrame`
+Ran 72 tests for test/YulRouter.t.sol:YulRouterTest
+[PASS] testFuzz_ConstructorImmutables(address) (runs: 10000, μ: 692119, ~: 692067)
+Logs:
+  Bound result 362145699523377744725066303332433294892063318744
+
+[PASS] testFuzz_ExactInCannotSpendMoreThanSpecifiedAmount(address,uint128,uint128) (runs: 10000, μ: 406787, ~: 409660)
+Logs:
+  Bound result 116872913371150
+  Bound result 1
+
+[PASS] testFuzz_ExactOutCannotSpendMoreThanInputThreshold(address,uint128,uint128) (runs: 10000, μ: 374881, ~: 352540)
+Logs:
+  Bound result 91304184070703502958
+  Bound result 1040367
+
+[PASS] testFuzz_ExecutionSettlementMatchesBaseline(uint128,bool,bool) (runs: 10000, μ: 507486, ~: 511172)
+Logs:
+  Bound result 54734079250284584628
+
+[PASS] testFuzz_ForwardedUpdateValidation(int128,int128,int128,bool,bool,bool) (runs: 10000, μ: 41944, ~: 41969)
+[PASS] testFuzz_NativeSettlement(uint128,uint128,bool,bool) (runs: 10000, μ: 854054, ~: 851846)
+Logs:
+  Bound result 79340016748366556
+  Bound result 503509036064638463
+
+[PASS] testFuzz_PathSigns(int128,int128,uint8) (runs: 10000, μ: 79543, ~: 79202)
+Logs:
+  Bound result -708911747147793005
+  Bound result -2
+
+[PASS] testFuzz_QuoteRejectsMalformedAbiBeforeLock(uint256,uint8) (runs: 10000, μ: 39778, ~: 40246)
+[PASS] testFuzz_QuoteRejectsValueBeforeLock(uint256) (runs: 10000, μ: 47325, ~: 47325)
+[PASS] testFuzz_RecipientApprovalIsNeverUsedAsPayer(address,uint128) (runs: 10000, μ: 650342, ~: 652009)
+Logs:
+  Bound result 471599968
+
+[PASS] testFuzz_RouteModesAgree(uint128,uint8,bool,bool,bool) (runs: 10000, μ: 895975, ~: 927636)
+Logs:
+  Bound result 1024
+
+[PASS] testFuzz_SignedSwapDirections(uint128,bool,bool) (runs: 10000, μ: 1241042, ~: 1247796)
+Logs:
+  Bound result 3
+
+[PASS] testFuzz_SignedUpdateValidation(int128,int128,int128,bool,bool) (runs: 10000, μ: 52141, ~: 52147)
+[PASS] testFuzz_SwapParameterEncoding(int128,uint96,uint32,bool,uint8,bytes) (runs: 10000, μ: 44928, ~: 44478)
+[PASS] testFuzz_TransferFromReturnData(bytes,bool,uint8) (runs: 10000, μ: 344880, ~: 339741)
+[PASS] testFuzz_WithdrawalEncoding(address,address,uint128,uint8) (runs: 10000, μ: 56137, ~: 56204)
+Logs:
+  Bound result 31
+  Bound result 2
+
+[PASS] testFuzz_ZeroPathsPreserveExactness(bool,uint8,bool) (runs: 10000, μ: 172661, ~: 171863)
+Logs:
+  Bound result 3
+
+[PASS] testRevert_AdversarialCalldataCannotUseFakePayer() (gas: 346658)
+[PASS] testRevert_ArbitraryForwardeeCannotLeaveThirdTokenDebt() (gas: 721852)
+[PASS] testRevert_DelegateCall() (gas: 233391)
+[PASS] testRevert_EmptyPoolSwapDisallowsPartialByDefault() (gas: 149306)
+[PASS] testRevert_ExactInSlippageDoesNotSpendAllowance() (gas: 200152)
+[PASS] testRevert_ExactOutSlippageDoesNotSpendAllowance() (gas: 201644)
+[PASS] testRevert_ForwardedHopRequiresBalanceUpdate() (gas: 154973)
+[PASS] testRevert_InsufficientNativePayment() (gas: 473368)
+[PASS] testRevert_MixedSignsExactInputFirst() (gas: 1963460)
+[PASS] testRevert_MixedSignsExactOutputFirst() (gas: 1981442)
+[PASS] testRevert_NativeRecipientFailureRollsBackSwap() (gas: 745395)
+[PASS] testRevert_NativeRefundFailureRollsBackSwap() (gas: 536293)
+[PASS] testRevert_NoClaimIntegrationFeesSurface() (gas: 36316)
+[PASS] testRevert_PartialExactOutputCannotReceiveMoreThanSpecified() (gas: 554026)
+[PASS] testRevert_PartialSwapCannotSpendMoreThanSpecified() (gas: 553097)
+[PASS] testRevert_PartialSwapMustBeSingleHop() (gas: 692750)
+[PASS] testRevert_QuoteBubblesCalleeSuppliedFailureMarkerWithoutUnwrappingItTwice() (gas: 189131)
+[PASS] testRevert_QuoteBubblesRouteErrors() (gas: 54095)
+[PASS] testRevert_QuoteBubblesSpoofedQuoteResultInsteadOfReturningIt() (gas: 180973)
+[PASS] testRevert_SignedExclusiveSwapHopRejectsUnauthorizedLocker() (gas: 888572)
+[PASS] testRevert_SignedExclusiveSwapHopRequiresBalanceUpdate() (gas: 154096)
+[PASS] test_CodeSize() (gas: 6617)
+[PASS] test_CompareHuffCore() (gas: 5869130)
+[PASS] test_CompareHuffCoreExactOut() (gas: 5869667)
+[PASS] test_DeploymentGas() (gas: 637169)
+[PASS] test_DirectForwardAndQuoteReturnIdenticalData() (gas: 701916)
+[PASS] test_ForwardedExactOutRouteReturnsSignedAmounts() (gas: 479206)
+[PASS] test_ForwardedExactOutputPartialRouteReportsActualAmountsAtPriceLimit() (gas: 486570)
+[PASS] test_ForwardedPartialRouteMovesEmptyMEVCapturePoolToLimitWithoutDebt() (gas: 462556)
+[PASS] test_ForwardedPartialRouteMovesEmptyPoolToLimitWithoutDebt() (gas: 425148)
+[PASS] test_ForwardedPartialRouteMovesEmptyVe33PoolToLimitWithoutDebt() (gas: 457864)
+[PASS] test_ForwardedPartialRouteReportsActualAmountsAtPriceLimit() (gas: 486933)
+[PASS] test_ForwardedRouteCanUseNestedVe33Forward() (gas: 1252622)
+[PASS] test_ForwardedRouteReturnsAmountsToOriginalLocker() (gas: 477163)
+[PASS] test_MaximumHopCount() (gas: 5418826)
+[PASS] test_MaximumPathCount() (gas: 25149647)
+[PASS] test_NativeInputWithRefund() (gas: 851125)
+Logs:
+  Bound result 1000000000000000000
+  Bound result 1000000000000000000
+
+[PASS] test_NativeOutput() (gas: 853745)
+Logs:
+  Bound result 1000000000000000000
+  Bound result 0
+
+[PASS] test_NativeRefundCanReenterRouter() (gas: 1202802)
+[PASS] test_QuoteCoreRouteReturnsAmountsWithoutStateChanges() (gas: 92069)
+[PASS] test_QuoteForwardedExactOutputPartialRouteReturnsActualAmountsWithoutStateChanges() (gas: 282615)
+[PASS] test_QuoteRejectsEveryTruncatedHeader() (gas: 3617220)
+[PASS] test_SameSignExactInputPathsWithZeros() (gas: 529976)
+[PASS] test_SameSignExactOutputPathsWithZeros() (gas: 543832)
+[PASS] test_SdkGeneratedRoutes() (gas: 3978153)
+[PASS] test_SwapExactInCoreHop() (gas: 249733)
+[PASS] test_SwapExactInForwardedHop() (gas: 439415)
+[PASS] test_SwapExactInMEVCaptureForwardedHop() (gas: 972418)
+[PASS] test_SwapExactInMultiMultiHop() (gas: 1481635)
+[PASS] test_SwapExactInSignedExclusiveSwapHop() (gas: 1012858)
+[PASS] test_SwapExactInVe33Hop() (gas: 1008643)
+[PASS] test_TransferFromEmptyReturn() (gas: 299531)
+[PASS] test_TransferFromShortReturnBufferCompatibility() (gas: 12953898)
+[PASS] test_TransferFromTrueReturn() (gas: 336406)
+[PASS] test_WrapperHop() (gas: 253096)
+Suite result: ok. 72 passed; 0 failed; 0 skipped; finished in 3.57s (46.71s CPU time)
+
+Ran 1 test suite in 3.57s (3.57s CPU time): 72 tests passed, 0 failed, 0 skipped (72 total tests)

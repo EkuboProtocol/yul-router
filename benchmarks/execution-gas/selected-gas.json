@@ -1,0 +1,45 @@
+{
+  "yul_router.json": {
+    "hand_core_hop": "93312",
+    "hand_forwarded_hop": "97887",
+    "hand_multi_multihop": "130563",
+    "hand_signed_exclusive_swap_hop": "150624",
+    "hand_ve33_hop": "106432",
+    "hand_wrapper_hop": "98095",
+    "sdk_core_hop": "93384",
+    "sdk_multi_multihop": "130635",
+    "sdk_signed_exclusive_swap_hop": "150516",
+    "sdk_ve33_hop": "106504",
+    "sdk_wrapper_hop": "98167"
+  },
+  "yul_router_deployment.json": {
+    "create": "609824",
+    "runtime_bytes": "2427"
+  },
+  "yul_router_native.json": {
+    "input_refund": "93076",
+    "output": "104897"
+  },
+  "yul_router_partial.json": {
+    "input": "203826",
+    "output": "203606"
+  },
+  "yul_router_quotes.json": {
+    "core": "45696"
+  },
+  "yul_router_token.json": {
+    "empty": "97879",
+    "true": "100091"
+  },
+  "comparison.json": {
+    "huff_calldata_bytes_exact_in": "91",
+    "huff_calldata_bytes_exact_out": "99",
+    "huff_exact_in": "100999",
+    "huff_exact_out": "101567",
+    "huff_runtime_bytes": "24554",
+    "yul_calldata_bytes_exact_in": "184",
+    "yul_calldata_bytes_exact_out": "184",
+    "yul_exact_in": "102912",
+    "yul_exact_out": "103670"
+  }
+}

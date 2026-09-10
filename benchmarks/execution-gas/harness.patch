@@ -1,0 +1,82 @@
+diff --git i/test/YulRouter.t.sol w/test/YulRouter.t.sol
+index f65a6d1..adfa3ec 100644
+--- i/test/YulRouter.t.sol
++++ w/test/YulRouter.t.sol
+@@ -267,6 +267,77 @@ contract YulRouterTest is Test {
+         _initializeAndSeed(key);
+     }
+ 
++    function testFuzz_ExecutionSettlementMatchesBaseline(uint128 rawAmount, bool reverse, bool exactOutput) external {
++        int128 amount = int128(uint128(bound(rawAmount, 1, POSITION_AMOUNT / 1000)));
++        bytes memory data = _encodeSwapRouteWithAmounts(
++            address(this), bytes1(0), address(0), _poolKey(),
++            reverse ? TOKEN1 : TOKEN0, reverse ? TOKEN0 : TOKEN1,
++            exactOutput ? type(int128).min : int128(0), exactOutput ? -amount : amount
++        );
++        deal(TOKEN0, address(this), POSITION_AMOUNT);
++        deal(TOKEN1, address(this), POSITION_AMOUNT);
++        IERC20(TOKEN0).approve(router, POSITION_AMOUNT);
++        IERC20(TOKEN1).approve(router, POSITION_AMOUNT);
++        bytes memory baselineCode = vm.parseJsonBytes(vm.readFile("out/execution-baseline.json"), ".deployedBytecode.object");
++        address target = router;
++        address coreAddress = CORE_ADDRESS;
++        assembly ("memory-safe") {
++            mstore(add(baselineCode, 33), coreAddress)
++            mstore(add(baselineCode, 66), target)
++        }
++        uint256 state = vm.snapshotState();
++        bytes32 candidate = _executionSettlementDigest(data);
++        assertTrue(vm.revertToState(state));
++        vm.etch(router, baselineCode);
++        assertEq(_executionSettlementDigest(data), candidate, "settlement matches original runtime");
++    }
++
++    function _executionSettlementDigest(bytes memory data) private returns (bytes32) {
++        (bool success, bytes memory result) = router.call(data);
++        return keccak256(abi.encode(
++            success, result,
++            IERC20(TOKEN0).balanceOf(address(this)), IERC20(TOKEN1).balanceOf(address(this)),
++            IERC20(TOKEN0).balanceOf(CORE_ADDRESS), IERC20(TOKEN1).balanceOf(CORE_ADDRESS),
++            PoolState.unwrap(CORE.poolState(_poolKey().toPoolId()))
++        ));
++    }
++
++    function test_CompareHuffCore() external { _compareHuffCore(false); }
++    function test_CompareHuffCoreExactOut() external { _compareHuffCore(true); }
++    function _compareHuffCore(bool exactOut) private {
++        bytes memory code = vm.parseBytes(vm.readFile("out/huff-init.hex"));
++        address huff;
++        assembly ("memory-safe") { huff := create(0, add(code, 32), mload(code)) }
++        assertTrue(huff != address(0), "deploy Huff");
++        address specified = exactOut ? TOKEN1 : TOKEN0;
++        address calculated = exactOut ? TOKEN0 : TOKEN1;
++        bytes memory yulData = _encodeSwapRouteWithAmounts(address(this), bytes1(0), address(0), _poolKey(), specified, calculated, exactOut ? -int128(2 ether) : int128(0), exactOut ? -int128(SWAP_AMOUNT) : int128(SWAP_AMOUNT));
++        bytes memory huffData = abi.encodePacked(bytes1(uint8(1)), bytes1(uint8(8)), bytes1(uint8(exactOut ? 8 : 0)), hex"ffff0000", bytes1(uint8(exactOut ? 1 : 0)), exactOut ? abi.encodePacked(bytes8(uint64(2 ether + 1))) : bytes(""), bytes20(specified), bytes20(calculated), bytes8(uint64(SWAP_AMOUNT)), hex"000000", bytes8(FEE), bytes4(0), bytes20(address(this)));
++        deal(TOKEN0, address(this), 2 ether);
++        IERC20(TOKEN0).approve(router, 2 ether);
++        IERC20(TOKEN0).approve(huff, 2 ether);
++        vm.cool(CORE_ADDRESS); vm.cool(TOKEN0); vm.cool(TOKEN1); vm.cool(router); vm.cool(huff);
++        string memory suffix = exactOut ? "_exact_out" : "_exact_in";
++        uint256 state = vm.snapshotState();
++        (bool ok, bytes memory result) = router.call(yulData);
++        vm.snapshotGasLastCall("comparison", string.concat("yul",suffix));
++        assertTrue(ok, "Yul call");
++        (,,,int256 amount) = _decodeRouteResult(result);
++        uint256 balance = IERC20(TOKEN1).balanceOf(address(this));
++        uint256 inputBalance = IERC20(TOKEN0).balanceOf(address(this));
++        vm.revertToState(state);
++        vm.cool(CORE_ADDRESS); vm.cool(TOKEN0); vm.cool(TOKEN1); vm.cool(router); vm.cool(huff);
++        (ok, result) = huff.call(huffData);
++        vm.snapshotGasLastCall("comparison", string.concat("huff",suffix));
++        assertTrue(ok, "Huff call");
++        assertEq(abi.decode(result,(uint256)), uint256(amount < 0 ? -amount : amount));
++        assertEq(IERC20(TOKEN1).balanceOf(address(this)), balance);
++        assertEq(IERC20(TOKEN0).balanceOf(address(this)), inputBalance);
++        vm.snapshotValue("comparison", string.concat("huff_calldata_bytes",suffix), huffData.length);
++        vm.snapshotValue("comparison", string.concat("yul_calldata_bytes",suffix), yulData.length);
++        vm.snapshotValue("comparison", "huff_runtime_bytes", huff.code.length);
++    }
++
+     function test_SwapExactInCoreHop() external {
+         bytes memory data = _encodeOneHopRoute(address(this));
+ 

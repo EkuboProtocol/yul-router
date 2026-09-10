@@ -1,0 +1,30 @@
+--- a/src/YulRouter.yul
++++ b/src/YulRouter.yul
+@@ -171,6 +171,27 @@
+                     revertSelector(0x84e505d2) // InvalidRoute()
+                 }
+ 
++                if and(eq(multiHopsRemaining, 1), iszero(shr(240, calldataload(add(offset, 16))))) {
++                    let amount := sar(128, calldataload(offset))
++                    let adjustment
++                    let nextToken
++                    offset, totalCalculated, nextToken, adjustment := executeCoreSwapHop(add(offset, 18), routeEnd, amount, specifiedToken, 1)
++                    totalSpecified := add(amount, adjustment)
++                    if or(iszero(eq(offset, routeEnd)), iszero(eq(nextToken, calculatedToken))) {
++                        revertSelector(0x84e505d2)
++                    }
++                    let threshold := sar(128, calldataload(0x4e))
++                    if and(iszero(iszero(threshold)), iszero(iszero(amount))) {
++                        if slt(xor(threshold, amount), 0) { revertSelector(0x84e505d2) }
++                    }
++                    if slt(totalCalculated, threshold) {
++                        mstore(0, 0xe65f682d)
++                        mstore(32, totalCalculated)
++                        revert(28, 0x24)
++                    }
++                    leave
++                }
++
+                 for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
+                     let currentToken := specifiedToken
+                     let header := calldataload(offset)
