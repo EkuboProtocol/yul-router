@@ -742,6 +742,21 @@ contract YulRouterTest is Test {
         assertEq(router.balance, 0, "no stranded value");
     }
 
+    function test_QuoteRejectsEveryTruncatedHeader() external {
+        for (uint256 length = 4; length < 68; ++length) {
+            bytes memory data = abi.encodeWithSelector(QUOTE_SELECTOR, bytes(""));
+            // Exercise both zero and all-one prefixes of the truncated length word.
+            for (uint256 pattern; pattern < 2; ++pattern) {
+                for (uint256 i = 36; i < 68; ++i) {
+                    data[i] = pattern == 0 ? bytes1(0) : bytes1(0xff);
+                }
+                assembly ("memory-safe") { mstore(data, length) }
+                _assertRouterReverts(data, InvalidRoute.selector);
+                assembly ("memory-safe") { mstore(data, 68) }
+            }
+        }
+    }
+
     function testFuzz_QuoteRejectsMalformedAbiBeforeLock(uint256 word, uint8 mode) external {
         bytes memory route = _encodeOneHopRoute(address(this));
         bytes memory data = abi.encodeWithSelector(QUOTE_SELECTOR, route);
@@ -1477,6 +1492,34 @@ contract YulRouterTest is Test {
         _checkTransferFromReturnData(bytes(""), false, "empty");
     }
 
+    function test_TransferFromShortReturnBufferCompatibility() external {
+        deployCodeTo("YulRouter.t.sol:ReturnDataToken", TOKEN0);
+        // This payer leaves a 1 in the low byte of the first transferFrom calldata word.
+        address payer = address(0x100000000);
+        uint256 state = vm.snapshotState();
+        for (uint256 length = 1; length < 32; ++length) {
+            bytes memory response = new bytes(length);
+            ReturnDataToken(TOKEN0).configure(response, false);
+            deal(TOKEN0, payer, SWAP_AMOUNT);
+            vm.prank(payer);
+            IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+            bytes memory overlaid =
+                abi.encodeWithSelector(IERC20.transferFrom.selector, payer, CORE_ADDRESS, SWAP_AMOUNT);
+            for (uint256 i; i < length; ++i) {
+                overlaid[i] = response[i];
+            }
+            uint256 firstWord;
+            assembly ("memory-safe") { firstWord := mload(add(overlaid, 32)) }
+            vm.prank(payer);
+            (bool success, bytes memory result) = router.call(_encodeOneHopRoute(address(this)));
+            assertEq(success, firstWord == 1, "short return preserves buffer overlay");
+            if (!success) assertEq(result, response, "revert bytes");
+            assertEq(IERC20(TOKEN0).balanceOf(payer), success ? 0 : SWAP_AMOUNT, "payer balance");
+            assertEq(IERC20(TOKEN0).allowance(payer, router), success ? 0 : SWAP_AMOUNT, "payer allowance");
+            assertTrue(vm.revertToState(state));
+        }
+    }
+
     function test_TransferFromTrueReturn() external {
         _checkTransferFromReturnData(abi.encode(uint256(1)), false, "true");
     }
@@ -1508,16 +1551,29 @@ contract YulRouterTest is Test {
         }
     }
 
-    function testFuzz_SwapParameterEncoding(int128 amount, uint96 limit, uint32 control, bool reverse, uint8 mode)
-        external
-    {
+    function testFuzz_SwapParameterEncoding(
+        int128 amount,
+        uint96 limit,
+        uint32 control,
+        bool reverse,
+        uint8 mode,
+        bytes memory signature
+    ) external {
         mode %= 3;
         bool allowPartial = mode != 2 && control >> 31 != 0;
         PoolKey memory key = _poolKey();
         bytes memory hop =
             abi.encodePacked(bytes20(key.token0), bytes20(key.token1), PoolConfig.unwrap(key.config), limit, control);
         if (mode == 2) {
-            hop = bytes.concat(bytes1(uint8(4)), bytes20(VE33), hop, bytes32(0), bytes32(0), bytes4(0));
+            hop = bytes.concat(
+                bytes1(uint8(4)),
+                bytes20(VE33),
+                hop,
+                bytes32(0),
+                bytes32(0),
+                bytes4(uint32(signature.length)),
+                signature
+            );
         } else {
             hop = mode == 1 ? bytes.concat(bytes1(uint8(1)), bytes20(VE33), hop) : bytes.concat(bytes1(0), hop);
         }
@@ -1544,7 +1600,7 @@ contract YulRouterTest is Test {
             expected = bytes.concat(
                 IFlashAccountant.forward.selector,
                 abi.encode(VE33),
-                abi.encode(key, params, SignedSwapMeta.wrap(0), PoolBalanceUpdate.wrap(0), bytes(""))
+                abi.encode(key, params, SignedSwapMeta.wrap(0), PoolBalanceUpdate.wrap(0), signature)
             );
         }
         bytes32 update =
@@ -1751,8 +1807,79 @@ contract YulRouterTest is Test {
         _assertRouterReverts(data, InvalidRoute.selector);
     }
 
+    function testFuzz_WithdrawalEncoding(address token, address recipient, uint128 magnitude, uint8 pathCount)
+        external
+    {
+        vm.assume(token != TOKEN1);
+        magnitude = uint128(bound(magnitude, 1, uint256(1) << 127));
+        pathCount = uint8(bound(pathCount, 1, 3));
+        int128 amount = int128(-int256(uint256(magnitude)));
+        bytes memory data = abi.encodePacked(
+            bytes1(uint8(1)),
+            bytes1(pathCount - 1),
+            bytes20(token),
+            bytes20(TOKEN1),
+            bytes16(_encodeInt128(type(int128).min)),
+            bytes20(recipient)
+        );
+        bytes memory path = bytes.concat(
+            bytes16(_encodeInt128(amount)), bytes1(0), _encodeSwapHop(bytes1(0), address(0), _poolKey(token, TOKEN1))
+        );
+        for (uint256 i; i < pathCount; ++i) {
+            data = bytes.concat(data, path);
+        }
+        vm.mockCall(
+            CORE_ADDRESS,
+            abi.encodeWithSelector(ICore.swap_6269342730.selector),
+            abi.encode(bytes32(uint256(_encodeInt128(amount)) << 128))
+        );
+        uint256 total = uint256(magnitude) * pathCount;
+        bytes memory expected = abi.encodePacked(
+            IFlashAccountant.withdraw.selector, bytes20(token), bytes20(recipient), bytes16(uint128(total))
+        );
+        vm.mockCall(CORE_ADDRESS, expected, bytes(""));
+        vm.expectCall(CORE_ADDRESS, expected);
+        (bool success, bytes memory result) = router.call(data);
+        assertTrue(success, "withdrawal encoding");
+        assertEq(result, abi.encode(token, TOKEN1, -int256(total), int256(0)));
+    }
+
+    function testFuzz_ConstructorImmutables(address coreAddress) external {
+        coreAddress = address(uint160(bound(uint160(coreAddress), 0x10000, type(uint160).max)));
+        // Foundry intercepts its cheatcode and console addresses before ordinary mocks.
+        vm.assume(coreAddress != address(this) && coreAddress != router && coreAddress != address(vm));
+        vm.assume(coreAddress != 0x000000000000000000636F6e736F6c652e6c6f67);
+        bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
+        bytes memory code = bytes.concat(initcode, abi.encode(coreAddress));
+        address deployed;
+        assembly ("memory-safe") { deployed := create(0, add(code, 32), mload(code)) }
+        assertTrue(deployed != address(0));
+        vm.assume(coreAddress != deployed);
+        bytes memory expected = abi.encode(TOKEN0, TOKEN1, int256(123), int256(456));
+        vm.mockCall(coreAddress, abi.encodeWithSelector(IFlashAccountant.lock.selector), expected);
+        (bool success, bytes memory result) = deployed.call(hex"12");
+        assertTrue(success, "constructor Core and self addresses");
+        assertEq(result, expected, "configured Core response");
+        vm.prank(coreAddress);
+        (success, result) = deployed.call(hex"deadbeef");
+        assertFalse(success, "configured Core callback dispatch");
+        assertEq(result, abi.encodeWithSelector(bytes4(keccak256("InvalidCaller()"))));
+    }
+
     function test_CodeSize() external view {
         assertTrue(router.code.length < 10_000, "code size");
+    }
+
+    function test_DeploymentGas() external {
+        bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
+        bytes memory code = bytes.concat(initcode, abi.encode(CORE_ADDRESS));
+        address deployed;
+        uint256 gasBefore = gasleft();
+        assembly ("memory-safe") { deployed := create(0, add(code, 32), mload(code)) }
+        uint256 gasUsed = gasBefore - gasleft();
+        assertTrue(deployed != address(0), "deployment");
+        vm.snapshotValue("yul_router_deployment", "create", gasUsed);
+        vm.snapshotValue("yul_router_deployment", "runtime_bytes", deployed.code.length);
     }
 
     function locked_6416899205(uint256) external {

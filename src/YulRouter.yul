@@ -5,17 +5,15 @@ object "YulRouter" {
 
         // Constructor arg: ABI-encoded Ekubo Core address appended to initcode.
         codecopy(runtimeSize, sub(codesize(), 0x20), 0x20)
-        // The runtime compares this immutable address with ADDRESS to reject delegatecall.
-        mstore(add(runtimeSize, 0x20), address())
-
-        return(0, add(runtimeSize, 0x40))
+        setimmutable(0, "core", mload(runtimeSize))
+        setimmutable(0, "self", address())
+        return(0, runtimeSize)
     }
 
     object "Runtime" {
         code {
-            codecopy(0, sub(codesize(), 0x40), 0x40)
-            let core := mload(0)
-            let self := mload(0x20)
+            let core := loadimmutable("core")
+            let self := loadimmutable("self")
 
             if iszero(eq(address(), self)) {
                 revertSelector(0xa1c0d6e5) // DelegateCall()
@@ -43,40 +41,42 @@ object "YulRouter" {
             function lock(coreAddress) {
                 let size := calldatasize()
 
-                mstore(0, shl(224, 0xf83d08ba)) // lock()
-                calldatacopy(4, 0, size)
-                mstore(add(size, 4), caller())
-                mstore(add(size, 0x24), callvalue())
+                mstore(0, 0xf83d08ba) // lock()
+                calldatacopy(32, 0, size)
+                mstore(add(size, 32), caller())
+                mstore(add(size, 64), callvalue())
 
-                if iszero(call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0x80)) {
+                if iszero(call(gas(), coreAddress, 0, 28, add(size, 0x44), 28, 0x80)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
 
-                return(0, 0x80)
+                return(28, 0x80)
             }
 
             function quote(coreAddress) {
                 // Standard ABI encoding for quote(bytes): selector, offset, byte length, route data.
-                if or(callvalue(), or(lt(calldatasize(), 0x44), iszero(eq(calldataload(4), 0x20)))) {
+                if or(callvalue(), iszero(eq(calldataload(4), 0x20))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
                 let size := calldataload(0x24)
-                // The header check makes this subtraction safe. Bounding size by the
-                // available bytes also rules out overflow when rounding it up to a word.
+                // For a truncated header, equality below is possible only at calldata
+                // lengths 4 or 36: the former fails the ABI offset check, and the latter
+                // loads a zero size that cannot equal the wrapped available length.
+                // For a complete header, size <= available rules out rounding overflow.
                 let available := sub(calldatasize(), 0x44)
                 if or(gt(size, available), iszero(eq(and(add(size, 31), not(31)), available))) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                mstore(0, shl(224, 0xf83d08ba)) // lock()
-                calldatacopy(4, 0x44, size)
+                mstore(0, 0xf83d08ba) // lock()
+                calldatacopy(32, 0x44, size)
                 // The high bit cannot be present in a caller address, so it safely marks this lock as a quote.
-                mstore(add(size, 4), or(caller(), shl(255, 1)))
-                mstore(add(size, 0x24), 0)
+                mstore(add(size, 32), or(caller(), shl(255, 1)))
+                mstore(add(size, 64), 0)
 
-                if call(gas(), coreAddress, 0, 0, add(size, 0x44), 0, 0) {
+                if call(gas(), coreAddress, 0, 28, add(size, 0x44), 0, 0) {
                     revertSelector(0x4d985756) // ExpectedQuoteRevert()
                 }
 
@@ -113,12 +113,12 @@ object "YulRouter" {
                 let payerWithFlags := calldataload(routeEnd)
 
                 if shr(160, payerWithFlags) {
-                    mstore(0, shl(224, 0x4852c8eb)) // QuoteResult(address,address,int256,int256)
-                    mstore(4, specifiedToken)
-                    mstore(0x24, calculatedToken)
-                    mstore(0x44, totalSpecified)
-                    mstore(0x64, totalCalculated)
-                    revert(0, 0x84)
+                    mstore(0, 0x4852c8eb) // QuoteResult(address,address,int256,int256)
+                    mstore(32, specifiedToken)
+                    mstore(64, calculatedToken)
+                    mstore(96, totalSpecified)
+                    mstore(128, totalCalculated)
+                    revert(28, 0x84)
                 }
 
                 // The quote branch above exits whenever any high payer bits are set.
@@ -277,9 +277,9 @@ object "YulRouter" {
                 }
 
                 if slt(totalCalculated, threshold) {
-                    mstore(0, shl(224, 0xe65f682d)) // SlippageCheckFailed(int256)
-                    mstore(4, totalCalculated)
-                    revert(0, 0x24)
+                    mstore(0, 0xe65f682d) // SlippageCheckFailed(int256)
+                    mstore(32, totalCalculated)
+                    revert(28, 0x24)
                 }
             }
 
@@ -428,21 +428,21 @@ object "YulRouter" {
             }
 
             function forwardedSwap(forwardee, token0, token1, config, amount, isToken1, sqrtRatioLimit, skipAhead) -> update {
-                mstore(0, shl(224, 0x101e8952)) // forward(address)
-                mstore(4, forwardee)
-                mstore(0x24, token0)
-                mstore(0x44, token1)
-                mstore(0x64, config)
-                mstore(0x84, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
+                mstore(0, 0x101e8952) // forward(address)
+                mstore(32, forwardee)
+                mstore(64, token0)
+                mstore(96, token1)
+                mstore(128, config)
+                mstore(160, packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
 
-                if iszero(call(gas(), caller(), 0, 0, 164, 0, 64)) {
+                if iszero(call(gas(), caller(), 0, 28, 164, 28, 64)) {
                     revertExternalCall(0)
                 }
                 if lt(returndatasize(), 32) {
                     revertSelector(0x84e505d2) // InvalidRoute()
                 }
 
-                update := mload(0)
+                update := mload(28)
             }
 
             function signedExclusiveSwap(
@@ -457,12 +457,12 @@ object "YulRouter" {
                 signatureOffset,
                 signatureLength
             ) -> update {
-                let ptr := 0
+                let ptr := 28
                 let dataPtr := add(ptr, 36)
                 let signaturePtr := add(dataPtr, 0x100)
                 let paddedSignatureLength := and(add(signatureLength, 31), not(31))
 
-                mstore(ptr, shl(224, 0x101e8952)) // forward(address)
+                mstore(0, 0x101e8952) // forward(address)
                 mstore(add(ptr, 4), forwardee)
 
                 // abi.encode(PoolKey, SwapParameters, SignedSwapMeta, PoolBalanceUpdate, bytes)
@@ -474,11 +474,11 @@ object "YulRouter" {
                 calldatacopy(add(dataPtr, 0x80), sub(signatureOffset, 68), 64)
                 mstore(add(dataPtr, 0xc0), 0xe0)
                 mstore(add(dataPtr, 0xe0), signatureLength)
+                mstore(sub(add(signaturePtr, paddedSignatureLength), 32), 0)
                 calldatacopy(signaturePtr, signatureOffset, signatureLength)
-                mstore(add(signaturePtr, signatureLength), 0)
 
                 if iszero(call(gas(), caller(), 0, ptr, add(0x124, paddedSignatureLength), ptr, 64)) {
-                    revertExternalCall(ptr)
+                    revertExternalCall(0)
                 }
                 if lt(returndatasize(), 32) {
                     revertSelector(0x84e505d2) // InvalidRoute()
@@ -488,11 +488,11 @@ object "YulRouter" {
             }
 
             function forwardWrapper(wrapper, amount) {
-                mstore(0, shl(224, 0x101e8952)) // forward(address)
-                mstore(4, wrapper)
-                mstore(36, amount)
+                mstore(0, 0x101e8952) // forward(address)
+                mstore(32, wrapper)
+                mstore(64, amount)
 
-                if iszero(call(gas(), caller(), 0, 0, 68, 0, 0)) {
+                if iszero(call(gas(), caller(), 0, 28, 68, 0, 0)) {
                     revertExternalCall(0)
                 }
             }
@@ -603,18 +603,20 @@ object "YulRouter" {
             }
 
             function payErc20(payer, token, amount) {
+                // The ABI buffer starts at byte 28 so selectors need no shift. Return
+                // data overlays that same buffer, preserving short-return semantics.
                 // startPayments(token)
-                mstore(0, shl(224, 0xf9b6a796))
-                mstore(4, token)
-                pop(call(gas(), caller(), 0, 0, 36, 0, 0))
+                mstore(0, 0xf9b6a796)
+                mstore(32, token)
+                pop(call(gas(), caller(), 0, 28, 36, 0, 0))
 
-                mstore(0, shl(224, 0x23b872dd)) // transferFrom(address,address,uint256)
-                mstore(4, payer)
-                mstore(36, caller())
-                mstore(68, amount)
+                mstore(0, 0x23b872dd) // transferFrom(address,address,uint256)
+                mstore(32, payer)
+                mstore(64, caller())
+                mstore(96, amount)
 
-                let success := call(gas(), token, 0, 0, 100, 0, 32)
-                if iszero(and(success, or(iszero(returndatasize()), eq(mload(0), 1)))) {
+                let success := call(gas(), token, 0, 28, 100, 28, 32)
+                if iszero(and(success, or(iszero(returndatasize()), eq(mload(28), 1)))) {
                     if returndatasize() {
                         returndatacopy(0, 0, returndatasize())
                         revert(0, returndatasize())
@@ -623,18 +625,19 @@ object "YulRouter" {
                 }
 
                 // completePayments(token)
-                mstore(0, shl(224, 0x12e103f1))
-                mstore(4, token)
-                pop(call(gas(), caller(), 0, 0, 36, 0, 0))
+                mstore(0, 0x12e103f1)
+                mstore(32, token)
+                pop(call(gas(), caller(), 0, 28, 36, 0, 0))
             }
 
             function withdraw(token, recipient, amount) {
-                mstore(0, shl(224, 0x3ccfd60b)) // withdraw()
-                mstore(4, shl(96, token))
-                mstore(24, shl(96, recipient))
-                mstore(44, shl(128, amount))
+                // Write backwards: later stores replace only padding/high amount bits.
+                // Bytes 8..67 hold selector (4), token (20), recipient (20), amount (16).
+                mstore(36, amount)
+                mstore(20, recipient)
+                mstore(0, or(shl(160, 0x3ccfd60b), token))
 
-                if iszero(call(gas(), caller(), 0, 0, 60, 0, 0)) {
+                if iszero(call(gas(), caller(), 0, 8, 60, 0, 0)) {
                     returndatacopy(0, 0, returndatasize())
                     revert(0, returndatasize())
                 }
