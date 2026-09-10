@@ -385,8 +385,6 @@ object "YulRouter" {
                 let config := calldataload(add(offset, 60))
                 let sqrtRatioLimit := shr(160, calldataload(add(offset, 92)))
                 let skipAhead := and(shr(224, calldataload(add(offset, 104))), 0x7fffffff)
-                let meta := calldataload(add(offset, 108))
-                let minBalanceUpdate := calldataload(add(offset, 140))
                 let signatureLength := shr(224, calldataload(add(offset, 172)))
                 let signatureOffset := add(offset, 176)
                 nextOffset := add(signatureOffset, signatureLength)
@@ -413,8 +411,6 @@ object "YulRouter" {
                     isToken1,
                     sqrtRatioLimit,
                     skipAhead,
-                    meta,
-                    minBalanceUpdate,
                     signatureOffset,
                     signatureLength
                 )
@@ -468,8 +464,6 @@ object "YulRouter" {
                 isToken1,
                 sqrtRatioLimit,
                 skipAhead,
-                meta,
-                minBalanceUpdate,
                 signatureOffset,
                 signatureLength
             ) -> update {
@@ -486,8 +480,8 @@ object "YulRouter" {
                 mstore(add(dataPtr, 0x20), token1)
                 mstore(add(dataPtr, 0x40), config)
                 mstore(add(dataPtr, 0x60), packParams(amount, isToken1, sqrtRatioLimit, skipAhead))
-                mstore(add(dataPtr, 0x80), meta)
-                mstore(add(dataPtr, 0xa0), minBalanceUpdate)
+                // meta and minBalanceUpdate are consecutive calldata words, before the signature length.
+                calldatacopy(add(dataPtr, 0x80), sub(signatureOffset, 68), 64)
                 mstore(add(dataPtr, 0xc0), 0xe0)
                 mstore(add(dataPtr, 0xe0), signatureLength)
                 calldatacopy(signaturePtr, signatureOffset, signatureLength)
@@ -516,6 +510,8 @@ object "YulRouter" {
             function nextFromUpdate(update, amount, isToken1, token0, token1, allowPartial)
                 -> nextAmount, nextToken, specifiedAdjustment
             {
+                // Partial fills compare nonnegative magnitudes. A wrong-sign delta wraps
+                // above the bounded int128 magnitude and fails the unsigned comparison.
                 if isToken1 {
                     let delta1 := signextend(15, update)
                     switch allowPartial
@@ -527,12 +523,12 @@ object "YulRouter" {
                     default {
                         switch slt(amount, 0)
                         case 0 {
-                            if or(slt(delta1, 0), sgt(delta1, amount)) {
+                            if gt(delta1, amount) {
                                 revertSelector(0xe3648855) // PartialSwapsDisallowed()
                             }
                         }
                         default {
-                            if or(slt(delta1, amount), sgt(delta1, 0)) {
+                            if gt(sub(0, delta1), sub(0, amount)) {
                                 revertSelector(0xe3648855) // PartialSwapsDisallowed()
                             }
                         }
@@ -554,12 +550,12 @@ object "YulRouter" {
                 default {
                     switch slt(amount, 0)
                     case 0 {
-                        if or(slt(delta0, 0), sgt(delta0, amount)) {
+                        if gt(delta0, amount) {
                             revertSelector(0xe3648855) // PartialSwapsDisallowed()
                         }
                     }
                     default {
-                        if or(slt(delta0, amount), sgt(delta0, 0)) {
+                        if gt(sub(0, delta0), sub(0, amount)) {
                             revertSelector(0xe3648855) // PartialSwapsDisallowed()
                         }
                     }

@@ -38,6 +38,26 @@ contract TestToken is ERC20 {
     }
 }
 
+contract ReturnDataToken is TestToken {
+    bytes private response;
+    bool private fail;
+
+    function configure(bytes memory response_, bool fail_) external {
+        response = response_;
+        fail = fail_;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        super.transferFrom(from, to, amount);
+        bytes memory data = response;
+        bool shouldRevert = fail;
+        assembly ("memory-safe") {
+            if shouldRevert { revert(add(data, 32), mload(data)) }
+            return(add(data, 32), mload(data))
+        }
+    }
+}
+
 contract DelegateCaller {
     function delegate(address target, bytes calldata data) external returns (bytes memory result) {
         (bool success, bytes memory returndata) = target.delegatecall(data);
@@ -927,6 +947,7 @@ contract YulRouterTest is Test {
         uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
 
         CORE.lock();
+        vm.snapshotGasLastCall("yul_router_partial", "input");
 
         assertGt(forwardSpecifiedAmount, 0, "specified amount");
         assertLt(forwardSpecifiedAmount, int256(uint256(SWAP_AMOUNT)), "specified amount below maximum");
@@ -985,6 +1006,7 @@ contract YulRouterTest is Test {
         uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
 
         CORE.lock();
+        vm.snapshotGasLastCall("yul_router_partial", "output");
 
         assertLt(forwardSpecifiedAmount, 0, "specified amount");
         assertGt(forwardSpecifiedAmount, int256(type(int128).min), "specified amount above requested minimum");
@@ -1428,6 +1450,99 @@ contract YulRouterTest is Test {
         );
         assertEq(address(payer).balance, 1, "refund retained");
         assertEq(router.balance, 0, "no stranded native");
+    }
+
+    function testFuzz_TransferFromReturnData(bytes memory data, bool fail, uint8 mode) external {
+        mode %= 4;
+        if (mode == 0) data = bytes("");
+        else if (mode == 1) data = bytes.concat(abi.encode(uint256(1)), data);
+        else if (mode == 2) data = bytes.concat(abi.encode(uint256(0)), data);
+        _checkTransferFromReturnData(data, fail, "");
+    }
+
+    function test_TransferFromEmptyReturn() external {
+        _checkTransferFromReturnData(bytes(""), false, "empty");
+    }
+
+    function test_TransferFromTrueReturn() external {
+        _checkTransferFromReturnData(abi.encode(uint256(1)), false, "true");
+    }
+
+    function _checkTransferFromReturnData(bytes memory data, bool fail, string memory gasCase) private {
+        deployCodeTo("YulRouter.t.sol:ReturnDataToken", TOKEN0);
+        ReturnDataToken(TOKEN0).configure(data, fail);
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+        uint256 token1Before = IERC20(TOKEN1).balanceOf(address(this));
+        bytes32 state = PoolState.unwrap(CORE.poolState(_poolKey().toPoolId()));
+        (bool success, bytes memory result) = router.call(_encodeOneHopRoute(address(this)));
+        if (bytes(gasCase).length != 0) vm.snapshotGasLastCall("yul_router_token", gasCase);
+        bool accepted = !fail && (data.length == 0 || (data.length >= 32 && abi.decode(data, (uint256)) == 1));
+        assertEq(success, accepted, "token response handling");
+        if (accepted) {
+            assertEq(IERC20(TOKEN0).balanceOf(address(this)), 0, "payment spent");
+            assertGt(IERC20(TOKEN1).balanceOf(address(this)), token1Before, "output received");
+        } else {
+            assertEq(
+                result,
+                data.length == 0 ? abi.encodeWithSelector(bytes4(keccak256("TransferFromFailed()"))) : data,
+                "revert bytes"
+            );
+            assertEq(IERC20(TOKEN0).balanceOf(address(this)), SWAP_AMOUNT, "payment rolled back");
+            assertEq(IERC20(TOKEN0).allowance(address(this), router), SWAP_AMOUNT, "allowance rolled back");
+            assertEq(IERC20(TOKEN1).balanceOf(address(this)), token1Before, "output rolled back");
+            assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), state, "pool unchanged");
+        }
+    }
+
+    function testFuzz_ForwardedUpdateValidation(
+        int128 amount,
+        int128 delta0,
+        int128 delta1,
+        bool reverse,
+        bool allowPartial,
+        bool validFill
+    ) external {
+        if (validFill) {
+            int256 magnitude = amount < 0 ? -int256(amount) : int256(amount);
+            int256 filled = allowPartial ? int256(uint256(uint128(delta0)) % (uint256(magnitude) + 1)) : magnitude;
+            if (amount < 0) filled = -filled;
+            if (reverse) delta1 = int128(filled);
+            else delta0 = int128(filled);
+        }
+        bytes memory data = _encodeSwapRouteWithParameters(
+            address(this),
+            bytes1(uint8(1)),
+            VE33,
+            _poolKey(),
+            reverse ? TOKEN1 : TOKEN0,
+            reverse ? TOKEN0 : TOKEN1,
+            amount < 0 ? type(int128).min : int128(0),
+            amount,
+            SqrtRatio.wrap(0),
+            allowPartial
+        );
+        bytes32 update = bytes32((uint256(_encodeInt128(delta0)) << 128) | _encodeInt128(delta1));
+        vm.mockCall(CORE_ADDRESS, abi.encodeWithSelector(IFlashAccountant.forward.selector), abi.encode(update));
+        (bool success, bytes memory result) = router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        int256 specified = reverse ? int256(delta1) : int256(delta0);
+        int256 calculated = -(reverse ? int256(delta0) : int256(delta1));
+        bool valid = allowPartial
+            ? (amount < 0 ? specified >= amount && specified <= 0 : specified >= 0 && specified <= amount)
+            : specified == amount;
+        if (allowPartial && amount == 0) {
+            assertFalse(success);
+            assertEq(result, abi.encodeWithSelector(InvalidRoute.selector));
+        } else if (!valid) {
+            assertFalse(success);
+            assertEq(result, abi.encodeWithSelector(PartialSwapsDisallowed.selector));
+        } else if (amount >= 0 && calculated < 0) {
+            assertFalse(success);
+            assertEq(result, abi.encodeWithSelector(SlippageCheckFailed.selector, calculated));
+        } else {
+            assertTrue(success);
+            assertEq(result, abi.encode(reverse ? TOKEN1 : TOKEN0, reverse ? TOKEN0 : TOKEN1, specified, calculated));
+        }
     }
 
     function test_MaximumPathCount() external {
