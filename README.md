@@ -59,6 +59,15 @@ The same pattern can move an initialized pool with no liquidity directly to its
 zero endpoint amounts for the caller to combine with a subsequent liquidity
 deposit.
 
+Routes accept an optional `deadline`: a `uint32` Unix timestamp. Header flag bit 0 appends
+the 20-byte recipient, and bit 1 appends the 4-byte deadline after it. The route may
+execute during the deadline second itself and reverts with `DeadlineExpired()` from the
+next second. The check runs before any hop, and it applies to direct execution,
+`Core.forward` and `quote(bytes)` alike. Flag bits above bit 1 are reserved and revert
+with `InvalidRoute()`. Routes without a deadline encode exactly as before. Swaps on
+behalf of users should always pass a deadline. A threshold only bounds the amounts; a
+deadline also bounds how long a pool's fee or state can change before the route lands.
+
 `encodeSignedSwapMeta(...)` requires its `nonce` as a `bigint`. JavaScript
 `number` values are rejected so uint64 nonces above the safe-integer range
 cannot be rounded before encoding.

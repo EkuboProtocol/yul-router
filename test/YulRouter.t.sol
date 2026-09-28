@@ -199,6 +199,7 @@ contract YulRouterTest is Test {
     error InvalidRoute();
     error PartialSwapsDisallowed();
     error SlippageCheckFailed(int256);
+    error DeadlineExpired();
 
     bytes4 private constant QUOTE_SELECTOR = bytes4(keccak256("quote(bytes)"));
     bytes4 private constant QUOTE_RESULT_SELECTOR = bytes4(keccak256("QuoteResult(address,address,int256,int256)"));
@@ -241,6 +242,7 @@ contract YulRouterTest is Test {
         bytes ve33;
         bytes signedExclusiveSwap;
         bytes multiMultiHop;
+        bytes coreDeadline;
     }
 
     function setUp() public {
@@ -598,6 +600,14 @@ contract YulRouterTest is Test {
         _executeSdkSwap("sdk_multi_multihop", c.multiMultiHop, TOKEN0, TOKEN2, SWAP_AMOUNT * 2);
     }
 
+    function test_SdkGeneratedDeadlineRoute() external {
+        bytes memory data = _sdkCases().coreDeadline;
+        _executeSdkSwap("sdk_core_hop_deadline", data, TOKEN0, TOKEN1, SWAP_AMOUNT);
+
+        vm.warp(block.timestamp + 1);
+        _assertRouterReverts(data, DeadlineExpired.selector);
+    }
+
     function test_QuoteCoreRouteReturnsAmountsWithoutStateChanges() external {
         PoolKey memory key = _poolKey();
         address quoteCaller = makeAddr("quote caller");
@@ -693,14 +703,10 @@ contract YulRouterTest is Test {
             exactOutput ? type(int128).min : int128(0),
             exactOutput ? -amount : amount
         );
-        if (flags & 1 == 0) {
-            bytes memory withoutRecipient = new bytes(data.length - 20);
-            for (uint256 i; i < withoutRecipient.length; ++i) {
-                withoutRecipient[i] = data[i < 58 ? i : i + 20];
-            }
-            data = withoutRecipient;
+        if (flags & 1 == 0) data = _withoutRecipient(data);
+        if (flags & 2 != 0) {
+            data = _withDeadline(data, uint32(block.timestamp));
         }
-        data[0] = bytes1(flags);
 
         deal(TOKEN0, address(this), POSITION_AMOUNT);
         deal(TOKEN1, address(this), POSITION_AMOUNT);
@@ -728,6 +734,63 @@ contract YulRouterTest is Test {
         assertEq(IERC20(TOKEN0).balanceOf(address(this)), balance0, "token0 balance");
         assertEq(IERC20(TOKEN1).balanceOf(address(this)), balance1, "token1 balance");
         assertEq(PoolState.unwrap(CORE.poolState(_poolKey().toPoolId())), poolState, "pool state");
+    }
+
+    function test_DeadlineIsInclusive() external {
+        bytes memory data = _withDeadline(_encodeOneHopRoute(address(this)), uint32(block.timestamp));
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        (bool success, bytes memory returndata) = router.call(data);
+        vm.snapshotGasLastCall("yul_router", "hand_core_hop_deadline");
+        assertTrue(success, "router call at the deadline");
+        assertEq(_calculatedAmountFromResult(returndata) > 0, true, "calculated amount");
+
+        vm.warp(block.timestamp + 1);
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+        _assertRouterReverts(data, DeadlineExpired.selector);
+    }
+
+    function testFuzz_DeadlineEnforcedInEveryMode(uint32 deadline, uint32 timestamp, uint8 mode, bool recipient)
+        external
+    {
+        vm.warp(timestamp);
+        bytes memory data = _encodeOneHopRoute(address(this));
+        if (!recipient) data = _withoutRecipient(data);
+        data = _withDeadline(data, deadline);
+        deal(TOKEN0, address(this), SWAP_AMOUNT);
+        IERC20(TOKEN0).approve(router, SWAP_AMOUNT);
+
+        (bool success, bytes memory returndata) = _callInMode(data, mode);
+
+        if (timestamp > deadline) {
+            assertFalse(success, "expired route");
+            assertEq(returndata, abi.encodeWithSelector(DeadlineExpired.selector), "expiry error");
+        } else {
+            assertTrue(success, "live route");
+        }
+    }
+
+    function testFuzz_ReservedHeaderFlagsRevert(uint8 flags, uint8 mode) external {
+        bytes memory data = _encodeOneHopRoute(address(this));
+        data[0] = bytes1(uint8(bound(flags, 4, 255)));
+
+        (bool success, bytes memory returndata) = _callInMode(data, mode);
+
+        assertFalse(success, "reserved flags");
+        assertEq(returndata, abi.encodeWithSelector(InvalidRoute.selector), "reserved flags error");
+    }
+
+    function testFuzz_TruncatedDeadlineReverts(uint8 length, bool recipient) external {
+        uint256 headerLength = recipient ? 78 : 58;
+        bytes memory data = new bytes(headerLength + bound(length, 0, 3));
+        data[0] = bytes1(recipient ? uint8(3) : uint8(2));
+
+        (bool success, bytes memory returndata) = router.call(data);
+
+        assertFalse(success, "truncated deadline");
+        assertEq(returndata, abi.encodeWithSelector(InvalidRoute.selector), "truncated deadline error");
     }
 
     function testFuzz_QuoteRejectsValueBeforeLock(uint256 value) external {
@@ -2192,6 +2255,36 @@ contract YulRouterTest is Test {
             bytes12(SqrtRatio.unwrap(sqrtRatioLimit)),
             bytes4(swapControl)
         );
+    }
+
+    /// @dev Executes directly (mode 0), through quote(bytes) (mode 1), or forwarded under this contract's lock.
+    function _callInMode(bytes memory data, uint8 mode) private returns (bool success, bytes memory returndata) {
+        mode %= 3;
+        if (mode == 0) return router.call(data);
+        if (mode == 1) return router.call(abi.encodeWithSelector(QUOTE_SELECTOR, data));
+        forwardTarget = router;
+        forwardData = data;
+        return address(CORE).call(abi.encodeWithSignature("lock()"));
+    }
+
+    function _withoutRecipient(bytes memory data) private pure returns (bytes memory result) {
+        result = new bytes(data.length - 20);
+        for (uint256 i; i < result.length; ++i) {
+            result[i] = data[i < 58 ? i : i + 20];
+        }
+        result[0] = bytes1(uint8(data[0]) & 0xfe);
+    }
+
+    /// @dev Inserts a deadline after the header and optional recipient, and sets header flag bit 1.
+    function _withDeadline(bytes memory data, uint32 deadline) private pure returns (bytes memory result) {
+        uint256 at = 58 + (uint8(data[0]) & 1) * 20;
+        result = new bytes(data.length + 4);
+        for (uint256 i; i < result.length; ++i) {
+            if (i < at) result[i] = data[i];
+            else if (i < at + 4) result[i] = bytes4(deadline)[i - at];
+            else result[i] = data[i - 4];
+        }
+        result[0] = bytes1(uint8(data[0]) | 2);
     }
 
     function _encodeInt128(int128 value) private pure returns (uint128 encoded) {

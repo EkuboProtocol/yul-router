@@ -170,7 +170,12 @@ object "YulRouter" {
             }
 
             function executeRoute(routeEnd) -> specifiedToken, calculatedToken, totalSpecified, totalCalculated {
+                // Header flags: bit 0 appends a recipient, and bit 1 appends a deadline after it.
                 let offset := add(0x5e, mul(and(byte(0, calldataload(0x24)), 1), 20))
+                // Folding the flag test into the bounds check costs routes without a deadline one shift and or.
+                if or(shr(249, calldataload(0x24)), gt(offset, routeEnd)) {
+                    offset := checkHeaderTail(offset, routeEnd)
+                }
 
                 let multiHopsRemaining := add(byte(1, calldataload(0x24)), 1)
                 // The last nonzero specified amount records the route's sign; zero means unknown.
@@ -178,10 +183,6 @@ object "YulRouter" {
 
                 specifiedToken := shr(96, calldataload(0x26))
                 calculatedToken := shr(96, calldataload(0x3a))
-
-                if gt(offset, routeEnd) {
-                    revertSelector(0x84e505d2) // InvalidRoute()
-                }
 
                 for { } multiHopsRemaining { multiHopsRemaining := sub(multiHopsRemaining, 1) } {
                     let currentToken := specifiedToken
@@ -292,6 +293,22 @@ object "YulRouter" {
                     mstore(0, 0xe65f682d) // SlippageCheckFailed(int256)
                     mstore(32, totalCalculated)
                     revert(28, 0x24)
+                }
+            }
+
+            function checkHeaderTail(offset, routeEnd) -> nextOffset {
+                let flags := byte(0, calldataload(0x24))
+                let hasDeadline := and(shr(1, flags), 1)
+                nextOffset := add(offset, shl(2, hasDeadline))
+                // Flag bits above the recipient and deadline are reserved.
+                if or(gt(flags, 3), gt(nextOffset, routeEnd)) {
+                    revertSelector(0x84e505d2) // InvalidRoute()
+                }
+                // The uint32 deadline is inclusive: the route may execute during that second.
+                if hasDeadline {
+                    if gt(timestamp(), shr(224, calldataload(offset))) {
+                        revertSelector(0x1ab7da6b) // DeadlineExpired()
+                    }
                 }
             }
 

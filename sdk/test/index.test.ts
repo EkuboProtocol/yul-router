@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decodeFunctionData } from "viem";
+import { decodeFunctionData, size } from "viem";
 import {
   encodePoolBalanceUpdate,
   encodeQuoteCalldata,
@@ -553,5 +553,71 @@ describe("encodeRoutes", () => {
         ],
       }),
     ).toThrow("hops");
+  });
+});
+
+describe("deadline", () => {
+  const base = {
+    specifiedToken: token0,
+    calculatedToken: token1,
+    specifiedAmount: 1_000n,
+    calculatedAmountThreshold: 900n,
+    hops: [{ type: "core" as const, poolKey: { token0, token1, config } }],
+  };
+  // flags, multi-hop count, two tokens and the threshold.
+  const headerLength = 2 + 20 + 20 + 16;
+
+  it("leaves routes without a deadline unchanged", () => {
+    const withoutRecipient = encodeRoute(base);
+    const withRecipient = encodeRoute({ ...base, recipient: extension });
+
+    expect(withoutRecipient.slice(0, 4)).toBe("0x00");
+    expect(withRecipient.slice(0, 4)).toBe("0x01");
+    expect(size(withRecipient) - size(withoutRecipient)).toBe(20);
+  });
+
+  it("appends a uint32 deadline after the optional recipient", () => {
+    const plain = encodeRoute({ ...base, recipient: extension });
+    const data = encodeRoute({
+      ...base,
+      recipient: extension,
+      deadline: 0x01020304,
+    });
+    const at = 2 + 2 * (headerLength + 20);
+
+    expect(data.slice(0, 4)).toBe("0x03");
+    expect(data.slice(at, at + 8)).toBe("01020304");
+    expect(`0x01${data.slice(4, at)}${data.slice(at + 8)}`).toBe(plain);
+  });
+
+  it("appends a deadline directly after the header without a recipient", () => {
+    const plain = encodeRoute(base);
+    const data = encodeRoute({ ...base, deadline: 0 });
+    const at = 2 + 2 * headerLength;
+
+    expect(data.slice(0, 4)).toBe("0x02");
+    expect(data.slice(at, at + 8)).toBe("00000000");
+    expect(`0x00${data.slice(4, at)}${data.slice(at + 8)}`).toBe(plain);
+  });
+
+  it("carries the deadline into quote calldata", () => {
+    const route = encodeRoute({ ...base, deadline: 1_900_000_000 });
+    const calldata = generateQuoteCalldata({
+      specifiedToken: base.specifiedToken,
+      calculatedToken: base.calculatedToken,
+      calculatedAmountThreshold: base.calculatedAmountThreshold,
+      deadline: 1_900_000_000,
+      multiHops: [{ specifiedAmount: base.specifiedAmount, hops: base.hops }],
+    });
+
+    expect(calldata).toBe(encodeQuoteCalldata(route));
+  });
+
+  it("rejects deadlines outside uint32", () => {
+    for (const deadline of [-1, 0x100000000, 1.5, Number.NaN]) {
+      expect(() => encodeRoute({ ...base, deadline })).toThrow(
+        "deadline must fit into uint32",
+      );
+    }
   });
 });
