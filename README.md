@@ -59,6 +59,15 @@ The same pattern can move an initialized pool with no liquidity directly to its
 zero endpoint amounts for the caller to combine with a subsequent liquidity
 deposit.
 
+Routes accept an optional `deadline`: a `uint32` Unix timestamp. Header flag bit 0 appends
+the 20-byte recipient, and bit 1 appends the 4-byte deadline after it. The route may
+execute during the deadline second itself and reverts with `DeadlineExpired()` from the
+next second. The check runs before any hop, and it applies to direct execution,
+`Core.forward` and `quote(bytes)` alike. Flag bits above bit 1 are reserved and revert
+with `InvalidRoute()`. Routes without a deadline encode exactly as before. Swaps on
+behalf of users should always pass a deadline. A threshold only bounds the amounts; a
+deadline also bounds how long a pool's fee or state can change before the route lands.
+
 `encodeSignedSwapMeta(...)` requires its `nonce` as a `bigint`. JavaScript
 `number` values are rejected so uint64 nonces above the safe-integer range
 cannot be rounded before encoding.
@@ -75,6 +84,13 @@ Supported hop types:
   that use the standard payload and return a `PoolBalanceUpdate` as their first ABI word. The forwardee address is
   carried in each hop rather than hard-coded in the router; current examples include MEV Capture and Ve33. The SDK
   defaults `forwardee` to the extension encoded in `poolKey.config` and allows overriding it to use an adapter.
+  Continuous auction pools are also `forwarded` pools. The auction charges the current holder's fee on every swap
+  that the holder's executor does not submit. That fee is uncapped, and a change takes effect from the next second.
+  The extension returns fee-inclusive amounts, so `calculatedAmountThreshold` bounds what the trader actually pays or
+  receives. Pair it with a `deadline`. The auction pool's price is set by the holder's own trading, not by arbitrage
+  at a known fee, so it is not an oracle. A bounded swap on a pool whose holder set the maximum fee
+  (`type(uint32).max`) reverts. A router should send that flow to another pool rather than loosen the threshold.
+  A closed pool (no live tenure) reverts with `PoolClosed()`.
 - `signedExclusiveSwap`: `Core.forward(forwardee, abi.encode(poolKey, params, meta, minBalanceUpdate, signature))` for SignedExclusiveSwap pools.
 - `wrapper`: `Core.forward(wrapper, abi.encode(int256 amount))` for Ekubo token wrappers.
 
