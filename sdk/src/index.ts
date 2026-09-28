@@ -107,6 +107,11 @@ export interface EncodeRoutesParameters {
    */
   calculatedAmountThreshold: bigint | false;
   recipient?: Address;
+  /**
+   * Last unix timestamp, in seconds, at which the route may execute (inclusive).
+   * Omitting it encodes a route that never expires.
+   */
+  deadline?: number;
   multiHops: readonly MultiHop[];
 }
 
@@ -120,6 +125,11 @@ export interface EncodeRouteParameters {
    */
   calculatedAmountThreshold: bigint | false;
   recipient?: Address;
+  /**
+   * Last unix timestamp, in seconds, at which the route may execute (inclusive).
+   * Omitting it encodes a route that never expires.
+   */
+  deadline?: number;
   hops: readonly Hop[];
 }
 
@@ -150,13 +160,7 @@ export function generateQuoteCalldata(params: EncodeRoutesParameters): Hex {
 }
 
 export function encodeRoutes(params: EncodeRoutesParameters): Hex {
-  const {
-    specifiedToken,
-    calculatedToken,
-    calculatedAmountThreshold,
-    recipient,
-    multiHops,
-  } = params;
+  const { specifiedToken, calculatedToken, multiHops } = params;
 
   if (multiHops.length < 1 || multiHops.length > MAX_MULTIHOP_LENGTH) {
     throw new Error(
@@ -170,7 +174,7 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
   const encodedMultiHops: Hex[] = [];
 
   for (const multiHop of multiHops) {
-    const { specifiedAmount, hops } = multiHop;
+    const { specifiedAmount } = multiHop;
     assertInt128(specifiedAmount, "specifiedAmount");
 
     if (specifiedAmount !== 0n) {
@@ -181,114 +185,164 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       isExactOut = multiHopExactOut;
     }
 
-    if (hops.length < 1 || hops.length > MAX_HOP_LENGTH) {
-      throw new Error(
-        `each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`,
-      );
-    }
+    encodedMultiHops.push(encodeMultiHop(multiHop, specified, calculated));
+  }
 
-    const partialHop = hops.find(
-      (hop) =>
-        (hop.type === "core" || hop.type === "forwarded") && hop.allowPartial,
-    );
-    if (partialHop && (hops.length !== 1 || specifiedAmount === 0n)) {
-      throw new Error(
-        "allowPartial is only valid for single-hop paths with a nonzero specifiedAmount",
-      );
-    }
+  const header = encodeRouteHeader(params, specified, calculated, isExactOut);
+  return concatHex([header, ...encodedMultiHops]);
+}
 
-    let currentToken = specified;
-    const encodedHops: Hex[] = [];
+function encodeMultiHop(
+  { specifiedAmount, hops }: MultiHop,
+  specified: Address,
+  calculated: Address,
+): Hex {
+  if (hops.length < 1 || hops.length > MAX_HOP_LENGTH) {
+    throw new Error(`each multi-hop needs between 1 and ${MAX_HOP_LENGTH} hops`);
+  }
 
-    for (const hop of hops) {
-      switch (hop.type) {
-        case "core": {
-          const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
-          encodedHops.push(
-            encodeSwapHop(
-              "00",
-              hop.poolKey,
-              hop.sqrtRatioLimit,
-              hop.skipAhead,
-              hop.allowPartial,
-            ),
-          );
-          currentToken = nextToken;
-          break;
-        }
-        case "forwarded": {
-          const { poolKey } = hop;
-          const forwardee = resolveForwardee(poolKey, hop.forwardee);
-          const { nextToken } = resolvePoolHop(currentToken, poolKey);
-          encodedHops.push(
-            concatHex([
-              "0x01",
-              encodeAddress(forwardee),
-              encodePoolKey(poolKey),
-              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-              encodeSwapControl(hop.skipAhead, hop.allowPartial),
-            ]),
-          );
-          currentToken = nextToken;
-          break;
-        }
-        case "signedExclusiveSwap": {
-          const { poolKey } = hop;
-          const forwardee = resolveForwardee(poolKey, hop.forwardee);
-          const { nextToken } = resolvePoolHop(currentToken, poolKey);
-          encodedHops.push(
-            concatHex([
-              "0x04",
-              encodeAddress(forwardee),
-              encodePoolKey(poolKey),
-              encodeSqrtRatioLimit(hop.sqrtRatioLimit),
-              encodeSwapControl(hop.skipAhead),
-              encodeUint256(hop.meta, "meta"),
-              encodeBytes32(hop.minBalanceUpdate, "minBalanceUpdate"),
-              encodeSignature(hop.signature),
-            ]),
-          );
-          currentToken = nextToken;
-          break;
-        }
-        case "wrapper": {
-          const underlying = getAddress(hop.underlying);
-          const wrapped = getAddress(hop.wrapped);
-          if (hexToBigInt(underlying) === hexToBigInt(wrapped)) {
-            throw new Error("underlying and wrapped token must differ");
-          }
-          if (currentToken === underlying) {
-            currentToken = wrapped;
-          } else if (currentToken === wrapped) {
-            currentToken = underlying;
-          } else {
-            throw new Error("wrapper hop is disconnected");
-          }
-          encodedHops.push(
-            concatHex([
-              "0x02",
-              encodeAddress(underlying),
-              encodeAddress(wrapped),
-            ]),
-          );
-          break;
-        }
-      }
-    }
-
-    if (currentToken !== calculated) {
-      throw new Error("calculatedToken does not match multi-hop output");
-    }
-
-    encodedMultiHops.push(
-      concatHex([
-        encodeInt128(specifiedAmount),
-        numberToHex(hops.length - 1, { size: 1 }),
-        ...encodedHops,
-      ]),
+  const partialHop = hops.find(
+    (hop) =>
+      (hop.type === "core" || hop.type === "forwarded") && hop.allowPartial,
+  );
+  if (partialHop && (hops.length !== 1 || specifiedAmount === 0n)) {
+    throw new Error(
+      "allowPartial is only valid for single-hop paths with a nonzero specifiedAmount",
     );
   }
 
+  let currentToken = specified;
+  const encodedHops: Hex[] = [];
+
+  for (const hop of hops) {
+    const { encoded, nextToken } = encodeHop(hop, currentToken);
+    encodedHops.push(encoded);
+    currentToken = nextToken;
+  }
+
+  if (currentToken !== calculated) {
+    throw new Error("calculatedToken does not match multi-hop output");
+  }
+
+  return concatHex([
+    encodeInt128(specifiedAmount),
+    numberToHex(hops.length - 1, { size: 1 }),
+    ...encodedHops,
+  ]);
+}
+
+function encodeHop(
+  hop: Hop,
+  currentToken: Address,
+): { encoded: Hex; nextToken: Address } {
+  switch (hop.type) {
+    case "core": {
+      const { nextToken } = resolvePoolHop(currentToken, hop.poolKey);
+      return {
+        encoded: encodeSwapHop(
+          "00",
+          hop.poolKey,
+          hop.sqrtRatioLimit,
+          hop.skipAhead,
+          hop.allowPartial,
+        ),
+        nextToken,
+      };
+    }
+    case "forwarded": {
+      const { poolKey } = hop;
+      const forwardee = resolveForwardee(poolKey, hop.forwardee);
+      const { nextToken } = resolvePoolHop(currentToken, poolKey);
+      return {
+        encoded: concatHex([
+          "0x01",
+          encodeAddress(forwardee),
+          encodePoolKey(poolKey),
+          encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+          encodeSwapControl(hop.skipAhead, hop.allowPartial),
+        ]),
+        nextToken,
+      };
+    }
+    case "signedExclusiveSwap": {
+      const { poolKey } = hop;
+      const forwardee = resolveForwardee(poolKey, hop.forwardee);
+      const { nextToken } = resolvePoolHop(currentToken, poolKey);
+      return {
+        encoded: concatHex([
+          "0x04",
+          encodeAddress(forwardee),
+          encodePoolKey(poolKey),
+          encodeSqrtRatioLimit(hop.sqrtRatioLimit),
+          encodeSwapControl(hop.skipAhead),
+          encodeUint256(hop.meta, "meta"),
+          encodeBytes32(hop.minBalanceUpdate, "minBalanceUpdate"),
+          encodeSignature(hop.signature),
+        ]),
+        nextToken,
+      };
+    }
+    case "wrapper":
+      return encodeWrapperHop(hop, currentToken);
+  }
+}
+
+function encodeWrapperHop(
+  hop: WrapperHop,
+  currentToken: Address,
+): { encoded: Hex; nextToken: Address } {
+  const underlying = getAddress(hop.underlying);
+  const wrapped = getAddress(hop.wrapped);
+  if (hexToBigInt(underlying) === hexToBigInt(wrapped)) {
+    throw new Error("underlying and wrapped token must differ");
+  }
+  let nextToken: Address;
+  if (currentToken === underlying) {
+    nextToken = wrapped;
+  } else if (currentToken === wrapped) {
+    nextToken = underlying;
+  } else {
+    throw new Error("wrapper hop is disconnected");
+  }
+  return {
+    encoded: concatHex([
+      "0x02",
+      encodeAddress(underlying),
+      encodeAddress(wrapped),
+    ]),
+    nextToken,
+  };
+}
+
+function encodeRouteHeader(
+  params: EncodeRoutesParameters,
+  specified: Address,
+  calculated: Address,
+  isExactOut: boolean | undefined,
+): Hex {
+  const { recipient, deadline, multiHops } = params;
+  const threshold = resolveThreshold(
+    params.calculatedAmountThreshold,
+    isExactOut,
+  );
+
+  // Flag bit 0 appends the recipient; bit 1 appends the deadline after it.
+  const flags = (recipient ? 1 : 0) | (deadline === undefined ? 0 : 2);
+  return concatHex([
+    numberToHex(flags, { size: 1 }),
+    numberToHex(multiHops.length - 1, { size: 1 }),
+    encodeAddress(specified),
+    encodeAddress(calculated),
+    encodeInt128(threshold),
+    ...(recipient ? [encodeAddress(recipient)] : []),
+    ...(deadline === undefined ? [] : [encodeDeadline(deadline)]),
+  ]);
+}
+
+function resolveThreshold(
+  calculatedAmountThreshold: bigint | false,
+  isExactOut: boolean | undefined,
+): bigint {
   if (calculatedAmountThreshold === undefined) {
     throw new Error("calculatedAmountThreshold is required");
   }
@@ -310,18 +364,14 @@ export function encodeRoutes(params: EncodeRoutesParameters): Hex {
       "calculatedAmountThreshold sign and specified amount signs have to match",
     );
   }
+  return threshold;
+}
 
-  const flags = recipient ? 1 : 0;
-  const header = concatHex([
-    numberToHex(flags, { size: 1 }),
-    numberToHex(multiHops.length - 1, { size: 1 }),
-    encodeAddress(specified),
-    encodeAddress(calculated),
-    encodeInt128(threshold),
-    ...(recipient ? [encodeAddress(recipient)] : []),
-  ]);
-
-  return concatHex([header, ...encodedMultiHops]);
+function encodeDeadline(deadline: number): Hex {
+  if (!Number.isInteger(deadline) || deadline < 0 || deadline > 0xffffffff) {
+    throw new Error("deadline must fit into uint32");
+  }
+  return numberToHex(deadline, { size: 4 });
 }
 
 function resolvePoolHop(currentToken: Address, poolKey: PoolKey) {

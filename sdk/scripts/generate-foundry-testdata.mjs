@@ -140,6 +140,16 @@ const cases = {
       },
     ],
   }),
+  // Foundry starts at timestamp 1; the router accepts routes through their deadline second.
+  coreDeadline: encodeRoute({
+    specifiedToken: TOKEN0,
+    calculatedToken: TOKEN1,
+    calculatedAmountThreshold: 1n,
+    recipient: RECIPIENT,
+    deadline: 1,
+    specifiedAmount: SWAP_AMOUNT,
+    hops: [{ type: "core", poolKey: pool01 }],
+  }),
   multiMultiHop: encodeRoutes({
     specifiedToken: TOKEN0,
     calculatedToken: TOKEN2,
@@ -172,6 +182,7 @@ console.log(
           { name: "ve33", type: "bytes" },
           { name: "signedExclusiveSwap", type: "bytes" },
           { name: "multiMultiHop", type: "bytes" },
+          { name: "coreDeadline", type: "bytes" },
         ],
       },
     ],
