@@ -362,7 +362,7 @@ contract YulRouterTest is Test {
 
     function test_SwapExactInSignedExclusiveSwapHop() external {
         PoolKey memory key = _signedExclusiveSwapPoolKey();
-        signedExclusiveSwap.initializePool(key, 0, controller);
+        signedExclusiveSwap.initializePool(key, 0, controller, 0);
         _seedInitializedPool(key);
 
         uint64 nonce = 123;
@@ -394,7 +394,7 @@ contract YulRouterTest is Test {
 
     function testFuzz_SignedSwapDirections(uint128 rawAmount, bool reverse, bool exactOutput) external {
         PoolKey memory key = _signedExclusiveSwapPoolKey();
-        signedExclusiveSwap.initializePool(key, 0, controller);
+        signedExclusiveSwap.initializePool(key, 0, controller, 0);
         _seedInitializedPool(key);
         SignedSwapMeta meta =
             createSignedSwapMeta(router, uint32(block.timestamp + 1 hours), SIGNED_EXCLUSIVE_SWAP_FEE, 123);
@@ -478,7 +478,7 @@ contract YulRouterTest is Test {
 
     function testRevert_SignedExclusiveSwapHopRejectsUnauthorizedLocker() external {
         PoolKey memory key = _signedExclusiveSwapPoolKey();
-        signedExclusiveSwap.initializePool(key, 0, controller);
+        signedExclusiveSwap.initializePool(key, 0, controller, 0);
         _seedInitializedPool(key);
 
         SignedSwapMeta meta = createSignedSwapMeta(
@@ -587,7 +587,7 @@ contract YulRouterTest is Test {
         _executeSdkSwap("sdk_ve33_hop", c.ve33, TOKEN0, TOKEN1, SWAP_AMOUNT);
 
         key = _signedExclusiveSwapPoolKey();
-        signedExclusiveSwap.initializePool(key, 0, controller);
+        signedExclusiveSwap.initializePool(key, 0, controller, 0);
         _seedInitializedPool(key);
         _executeSdkSwap("sdk_signed_exclusive_swap_hop", c.signedExclusiveSwap, TOKEN0, TOKEN1, SWAP_AMOUNT);
 
