@@ -77,6 +77,46 @@ gas_estimate_multiplier_for() {
   esac
 }
 
+# Lowest priority fee in wei a network accepts, or 0 to use Foundry's suggestion.
+min_priority_fee_for() {
+  case "$1" in
+    # Polygon rejects tips below 25 gwei, but Amoy's eth_maxPriorityFeePerGas can
+    # suggest 1 wei, which fails as "gas tip cap 1, minimum needed 25000000000".
+    polygon-mainnet | polygon-amoy) printf '25000000000' ;;
+    *) printf '0' ;;
+  esac
+}
+
+# EIP-1559 fee flags for forge: the suggested tip raised to the network minimum,
+# and a max fee of twice the base fee plus that tip, so the tip always fits.
+fee_args_for() {
+  local network="$1"
+  local rpc_url="$2"
+  local min_priority_fee
+  min_priority_fee="$(min_priority_fee_for "$network")"
+  [[ "$min_priority_fee" == "0" ]] && return 0
+
+  local suggested
+  suggested="$(cast to-dec "$(cast rpc eth_maxPriorityFeePerGas --rpc-url "$rpc_url" | tr -d '"')")"
+  if [[ ! "$suggested" =~ ^[0-9]+$ ]]; then
+    echo "$network returned invalid priority fee: $suggested" >&2
+    return 1
+  fi
+  if ((suggested < min_priority_fee)); then
+    suggested="$min_priority_fee"
+  fi
+
+  local base_fee
+  base_fee="$(cast base-fee --rpc-url "$rpc_url")"
+  if [[ ! "$base_fee" =~ ^[0-9]+$ ]]; then
+    echo "$network returned invalid base fee: $base_fee" >&2
+    return 1
+  fi
+  printf '%s\n' \
+    --with-gas-price "$((2 * base_fee + suggested))" \
+    --priority-gas-price "$suggested"
+}
+
 offline_output="$(forge script script/DeployYulRouter.s.sol --sig "run()" --offline)"
 expected_routers=()
 while IFS= read -r address; do
@@ -157,6 +197,12 @@ for index in "${!networks[@]}"; do
     rm -f "$raw_broadcast"
   fi
 
+  fee_output="$(fee_args_for "$network" "$rpc_url")"
+  fee_args=()
+  while IFS= read -r arg; do
+    [[ -n "$arg" ]] && fee_args+=("$arg")
+  done <<<"$fee_output"
+
   echo "deploying: $network (chain $chain_id)"
   set +e
   forge script script/DeployYulRouter.s.sol \
@@ -167,6 +213,7 @@ for index in "${!networks[@]}"; do
     --non-interactive \
     --slow \
     --gas-estimate-multiplier "$(gas_estimate_multiplier_for "$network")" \
+    ${fee_args[@]+"${fee_args[@]}"} \
     -vv 2>&1 | tee "$deploy_output"
   forge_status="${PIPESTATUS[0]}"
   set -e
