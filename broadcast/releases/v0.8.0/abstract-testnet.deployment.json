@@ -1,0 +1,15 @@
+{
+  "network": "abstract-testnet",
+  "chainId": "11124",
+  "router": "0x03c8B90854b90AA22448b11e885F692972DA441C",
+  "canonicalCore": "0x00000000000014aA86C5d3c41765bb24e11bd701",
+  "deterministicDeployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "broadcaster": "0x00000C771F6176268D5A9846E0956C3eF58597A1",
+  "blockNumber": "18681000",
+  "verifiedAt": "2026-09-30T00:40:25Z",
+  "deployedNow": true,
+  "transactionHashes": [
+    "0x3feb8c496bfb6063b7f9eddf72089a3e810b28bccefc508e69bf6f6ddf727dc0"
+  ],
+  "foundryBroadcast": "broadcast/releases/v0.8.0/abstract-testnet.foundry.json"
+}

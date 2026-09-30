@@ -1,0 +1,15 @@
+{
+  "network": "zksync-sepolia",
+  "chainId": "300",
+  "router": "0x03c8B90854b90AA22448b11e885F692972DA441C",
+  "canonicalCore": "0x00000000000014aA86C5d3c41765bb24e11bd701",
+  "deterministicDeployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "broadcaster": "0x00000C771F6176268D5A9846E0956C3eF58597A1",
+  "blockNumber": "8606779",
+  "verifiedAt": "2026-09-30T00:40:18Z",
+  "deployedNow": true,
+  "transactionHashes": [
+    "0x4de02edc75b89b496e74fac621271ed6c5ba2d3a744fb8fb3bea0cc83fcf065a"
+  ],
+  "foundryBroadcast": "broadcast/releases/v0.8.0/zksync-sepolia.foundry.json"
+}
