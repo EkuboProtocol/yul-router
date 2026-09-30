@@ -35,10 +35,14 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      # Foundry 1.8 pins forks with a raw block-hash parameter, which the zkSync
+      # and Abstract RPCs reject ("did not match any variant of untagged enum
+      # BlockIdVariant"), so DeployYulRouter cannot run there. 1.7.1 sends a
+      # block number and computes the same initcode and router address.
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: stable
+          version: v1.7.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
