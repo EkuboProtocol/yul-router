@@ -67,13 +67,12 @@ rpc_url_for() {
 # Percent multiplier Foundry applies to its own gas estimate before sending.
 gas_estimate_multiplier_for() {
   case "$1" in
-    # MegaETH charges far more intrinsic gas for this deployment than Foundry
-    # simulates, and rejects the default-padded limit as "intrinsic gas too low":
-    # its own eth_estimateGas asks for about 27-31M where Foundry estimates 720k.
-    # 50x covers that gap, and still fits the testnet's 2B block gas limit when
-    # Foundry uses the node's estimate instead (27M x 50 = 1.36B; 80x exceeded
-    # it). The padding costs nothing beyond the gas the deployment burns.
-    megaeth-mainnet | megaeth-testnet) printf '5000' ;;
+    # MegaETH charges far more intrinsic gas for this deployment than the EVM
+    # alone would: its eth_estimateGas asks for about 27M, which Foundry now
+    # uses as its estimate. 3x covers drift between estimate and inclusion.
+    # Keep the product under MegaETH's 1B per-transaction gas cap: larger
+    # multipliers were rejected with "exceeds max transaction gas limit".
+    megaeth-mainnet | megaeth-testnet) printf '300' ;;
     *) printf '130' ;;
   esac
 }
