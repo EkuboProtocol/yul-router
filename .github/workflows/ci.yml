@@ -18,15 +18,25 @@ jobs:
           path: yul-router
           submodules: recursive
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+      - parallel:
+          - name: Install Foundry
+            uses: foundry-rs/foundry-toolchain@v1
+            with:
+              version: stable
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
+          - name: Setup Bun
+            uses: oven-sh/setup-bun@v2
+            with:
+              bun-version: 1.3.11
+
+      # The contract build is the longest step and does not read anything the
+      # SDK steps produce, so it runs in the background while they run in order.
+      # The forge consumers below wait for it explicitly.
+      - name: Build contracts and scripts
+        id: build-contracts
+        run: forge build
+        working-directory: yul-router
+        background: true
 
       - name: Install SDK dependencies
         run: bun install --frozen-lockfile
@@ -50,9 +60,8 @@ jobs:
           node --test script/release/release.test.mjs
         working-directory: yul-router
 
-      - name: Build contracts and scripts
-        run: forge build
-        working-directory: yul-router
+      - name: Wait for the contract build
+        wait: build-contracts
 
       - name: Simulate deploy script
         run: forge script script/DeployYulRouter.s.sol --sig "run()" --offline
@@ -77,23 +86,27 @@ jobs:
           path: yul-router
           submodules: recursive
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+      - parallel:
+          - name: Install Foundry
+            uses: foundry-rs/foundry-toolchain@v1
+            with:
+              version: stable
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
+          - name: Setup Bun
+            uses: oven-sh/setup-bun@v2
+            with:
+              bun-version: 1.3.11
 
-      - name: Install SDK dependencies
-        run: bun install --frozen-lockfile
-        working-directory: yul-router/sdk
+      # The integration script shells out to bun, so both the SDK dependencies
+      # and the contract build must be complete before it runs.
+      - parallel:
+          - name: Install SDK dependencies
+            run: bun install --frozen-lockfile
+            working-directory: yul-router/sdk
 
-      - name: Build contracts and integration script
-        run: forge build
-        working-directory: yul-router
+          - name: Build contracts and integration script
+            run: forge build
+            working-directory: yul-router
 
       - name: Execute production quotes on a mainnet fork
         run: forge script script/ProductionQuotesIntegration.s.sol -vvv
