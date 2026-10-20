@@ -60,6 +60,18 @@ jobs:
           node --test script/release/release.test.mjs
         working-directory: yul-router
 
+      # Packs the SDK exactly as the release workflow does and checks that the
+      # artifact on this revision still targets the router recorded for the
+      # version in sdk/package.json.
+      - name: Verify packed SDK targets the recorded deployments
+        run: |
+          pack_dir="$(mktemp -d)"
+          tarball="$(npm pack --json --pack-destination "$pack_dir" | jq -r '.[0].filename')"
+          node ../script/release/verify-packed-package.mjs \
+            "$(jq -r .version package.json)" \
+            "$pack_dir/$tarball"
+        working-directory: yul-router/sdk
+
       - name: Wait for the contract build
         wait: build-contracts
 
