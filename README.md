@@ -158,6 +158,24 @@ reusing a stale `run-latest.json`. A successful Forge script is authoritative;
 the release does not perform a post-deployment runtime-code lookup. Only the
 one address emitted by this all-chain verification is written to the SDK.
 
+After the package is built and packed, and before anything is committed or
+published, `script/release/verify-packed-package.mjs` opens the exact tarball
+that `npm publish` will upload, loads its runtime entrypoint and compares the
+`YUL_ROUTER_ADDRESS` it exports (and every address literal it embeds) with the
+router recorded in `broadcast/releases/v<version>/manifest.json`, after
+re-running the all-chain record verification on that manifest. It also requires
+the packed `package.json` version, the release version and the manifest version
+to agree, `broadcast/deployments.json` to match the release manifest, and the
+tarball to contain only `package.json`, the README and `dist/`. An address that
+belonged to an earlier release is reported as stale; any other address as
+unknown. CI runs the same check on every push against the version currently in
+`sdk/package.json`. Run it locally with:
+
+```sh
+cd sdk && npm pack && cd ..
+node script/release/verify-packed-package.mjs 0.8.0 sdk/ekubo-yul-router-sdk-0.8.0.tgz
+```
+
 ## Production quote integration
 
 CI requests live mainnet quotes from `https://prod-api-quoter.ekubo.org`, converts every split and hop to router

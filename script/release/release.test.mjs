@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import {
   parseNetworks,
@@ -14,6 +16,12 @@ import {
   updateRouterAddress,
   validateVersion,
 } from "./prepare-package.mjs";
+import {
+  resolveRuntimeEntrypoint,
+  verifyPackedPackage,
+} from "./verify-packed-package.mjs";
+
+const execFileAsync = promisify(execFile);
 
 const ROUTER = "0x00000000D542a1Afa7A01ECB16254F7A0F8ceB61";
 const OTHER_ROUTER = "0x1111111111111111111111111111111111111111";
@@ -300,5 +308,210 @@ test("package preparation validates the version and router declaration", () => {
   assert.throws(
     () => updateRouterAddress("export const other = 1;", ROUTER),
     /expected one YUL_ROUTER_ADDRESS/,
+  );
+});
+
+/**
+ * A release checkout with the v0.7.0 and v0.8.0 manifests the release flow
+ * writes, plus an empty sdk/node_modules for the packed entrypoint to resolve
+ * against.
+ */
+async function packedPackageFixture(t) {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "yul-router-packed-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+
+  const networks = ["eth-mainnet", "base-mainnet"];
+  const networksFile = path.join(rootDir, "networks.txt");
+  await writeFile(networksFile, `${networks.join("\n")}\n`);
+  await mkdir(path.join(rootDir, "sdk", "node_modules"), { recursive: true });
+
+  const manifestFor = (version, router) => ({
+    version,
+    router,
+    deployments: [
+      deployment("eth-mainnet", "1", { router }),
+      deployment("base-mainnet", "8453", { router }),
+    ],
+  });
+  for (const [version, router] of [
+    ["0.7.0", OTHER_ROUTER],
+    ["0.8.0", ROUTER],
+  ]) {
+    const releaseDir = path.join(rootDir, "broadcast", "releases", `v${version}`);
+    await mkdir(releaseDir, { recursive: true });
+    await writeFile(
+      path.join(releaseDir, "manifest.json"),
+      JSON.stringify(manifestFor(version, router)),
+    );
+  }
+  await writeFile(
+    path.join(rootDir, "broadcast", "deployments.json"),
+    JSON.stringify(manifestFor("0.8.0", ROUTER)),
+  );
+
+  let counter = 0;
+  const pack = async ({
+    version = "0.8.0",
+    entrySource = `export const YUL_ROUTER_ADDRESS = "${ROUTER}";\n`,
+    entryName = "dist/index.js",
+    extraFiles = {},
+  } = {}) => {
+    const stageDir = path.join(rootDir, `stage-${counter}`);
+    const tarballPath = path.join(rootDir, `package-${counter}.tgz`);
+    counter += 1;
+    const packageDir = path.join(stageDir, "package");
+    await mkdir(path.join(packageDir, "dist"), { recursive: true });
+    await writeFile(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@ekubo/yul-router-sdk",
+        version,
+        type: "module",
+        exports: { ".": { import: "./dist/index.js" } },
+      }),
+    );
+    await writeFile(path.join(packageDir, "README.md"), "# fixture\n");
+    await writeFile(path.join(packageDir, entryName), entrySource);
+    for (const [name, contents] of Object.entries(extraFiles)) {
+      await writeFile(path.join(packageDir, name), contents);
+    }
+    await execFileAsync("tar", ["-czf", tarballPath, "-C", stageDir, "package"]);
+    return tarballPath;
+  };
+
+  const verify = (tarballPath, version = "0.8.0") =>
+    verifyPackedPackage(version, tarballPath, { rootDir, networksFile });
+
+  return { rootDir, pack, verify };
+}
+
+test("packed package verification resolves the runtime entrypoint from package.json", () => {
+  assert.equal(
+    resolveRuntimeEntrypoint({
+      name: "@ekubo/yul-router-sdk",
+      exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
+    }),
+    "dist/index.js",
+  );
+  assert.equal(
+    resolveRuntimeEntrypoint({ name: "@ekubo/yul-router-sdk", main: "./dist/index.cjs" }),
+    "dist/index.cjs",
+  );
+  assert.throws(
+    () => resolveRuntimeEntrypoint({ name: "@ekubo/other", main: "./dist/index.js" }),
+    /unexpected package name/,
+  );
+  assert.throws(
+    () => resolveRuntimeEntrypoint({ name: "@ekubo/yul-router-sdk" }),
+    /runtime entrypoint/,
+  );
+});
+
+test("packed package verification accepts the artifact that targets the verified release router", async (t) => {
+  const { pack, verify } = await packedPackageFixture(t);
+
+  const result = await verify(await pack());
+
+  assert.equal(result.package, "@ekubo/yul-router-sdk@0.8.0");
+  assert.equal(result.entrypoint, "dist/index.js");
+  assert.equal(result.router, ROUTER);
+  assert.equal(result.version, "0.8.0");
+  assert.deepEqual(result.chainIds, ["1", "8453"]);
+  assert.match(result.sha256, /^[0-9a-f]{64}$/);
+});
+
+test("packed package verification names a router left over from an earlier release as stale", async (t) => {
+  const { pack, verify } = await packedPackageFixture(t);
+
+  await assert.rejects(
+    verify(
+      await pack({
+        entrySource: `export const YUL_ROUTER_ADDRESS = "${OTHER_ROUTER}";\n`,
+      }),
+    ),
+    /stale router address .* router of v0\.7\.0, but v0\.8\.0 is deployed at/,
+  );
+});
+
+test("packed package verification rejects an address no release ever deployed", async (t) => {
+  const { pack, verify } = await packedPackageFixture(t);
+  const neverDeployed = "0x2222222222222222222222222222222222222222";
+
+  await assert.rejects(
+    verify(
+      await pack({
+        entrySource: `export const YUL_ROUTER_ADDRESS = "${neverDeployed}";\n`,
+      }),
+    ),
+    /unknown router address 0x2222/,
+  );
+});
+
+test("packed package verification loads the entrypoint rather than trusting a text scan", async (t) => {
+  const { pack, verify } = await packedPackageFixture(t);
+  const head = OTHER_ROUTER.slice(0, 22);
+  const tail = OTHER_ROUTER.slice(22);
+
+  await assert.rejects(
+    verify(
+      await pack({
+        entrySource: `export const YUL_ROUTER_ADDRESS = "${head}" + "${tail}";\n`,
+      }),
+    ),
+    /exports stale router address/,
+  );
+  await assert.rejects(
+    verify(await pack({ entrySource: "export const OTHER = 1;\n" })),
+    /does not export a valid YUL_ROUTER_ADDRESS/,
+  );
+});
+
+test("packed package verification rejects version drift between tarball, release and manifests", async (t) => {
+  const { rootDir, pack, verify } = await packedPackageFixture(t);
+
+  await assert.rejects(
+    verify(await pack({ version: "0.8.1" })),
+    /packed package\.json is version 0\.8\.1, expected 0\.8\.0/,
+  );
+  await assert.rejects(
+    verify(await pack({ version: "0.9.0" }), "0.9.0"),
+    /no verified deployment manifest for v0\.9\.0/,
+  );
+
+  // The release flow writes broadcast/deployments.json from the same manifest;
+  // a checkout where they disagree must not publish.
+  await writeFile(
+    path.join(rootDir, "broadcast", "deployments.json"),
+    JSON.stringify({ version: "0.7.0", router: OTHER_ROUTER, deployments: [] }),
+  );
+  await assert.rejects(
+    verify(await pack()),
+    /broadcast\/deployments\.json records v0\.7\.0/,
+  );
+});
+
+test("packed package verification rejects tarballs with leaked or missing files", async (t) => {
+  const { pack, verify } = await packedPackageFixture(t);
+
+  await assert.rejects(
+    verify(await pack({ extraFiles: { ".env": "SECRET=1\n" } })),
+    /unexpected files: package\/\.env/,
+  );
+  await assert.rejects(
+    verify(await pack({ entryName: "dist/index.mjs" })),
+    /runtime entrypoint dist\/index\.js is not in the tarball/,
+  );
+});
+
+test("packed package verification reuses the all-chain deployment check on the manifest", async (t) => {
+  const { rootDir, pack, verify } = await packedPackageFixture(t);
+  const manifestPath = path.join(rootDir, "broadcast", "releases", "v0.8.0", "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  manifest.deployments.pop();
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await assert.rejects(
+    verify(await pack()),
+    /expected 2 deployment records, found 1/,
   );
 });

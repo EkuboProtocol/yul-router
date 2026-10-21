@@ -145,6 +145,15 @@ jobs:
           test -f "$package_tarball"
           echo "package_tarball=$package_tarball" >> "$GITHUB_OUTPUT"
 
+      # Loads the runtime entrypoint out of the tarball that will be uploaded and
+      # checks its router against the manifest verified above, so a stale or
+      # hand-edited address can never ship under a new version.
+      - name: Verify packed package targets the verified deployments
+        run: |
+          node script/release/verify-packed-package.mjs \
+            "$RELEASE_VERSION" \
+            "sdk/${{ steps.package.outputs.package_tarball }}"
+
       - name: Commit and tag release
         id: commit
         run: |
