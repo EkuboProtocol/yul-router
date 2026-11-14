@@ -1,0 +1,15 @@
+{
+  "hand_core_hop": "94201",
+  "hand_core_hop_deadline": "94322",
+  "hand_forwarded_hop": "98786",
+  "hand_multi_multihop": "131307",
+  "hand_signed_exclusive_swap_hop": "151550",
+  "hand_ve33_hop": "107331",
+  "hand_wrapper_hop": "99001",
+  "sdk_core_hop": "94242",
+  "sdk_core_hop_deadline": "94363",
+  "sdk_multi_multihop": "131348",
+  "sdk_signed_exclusive_swap_hop": "151411",
+  "sdk_ve33_hop": "107372",
+  "sdk_wrapper_hop": "99042"
+}

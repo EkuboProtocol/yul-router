@@ -1912,7 +1912,7 @@ contract YulRouterTest is Test {
         // Foundry intercepts its cheatcode and console addresses before ordinary mocks.
         vm.assume(coreAddress != address(this) && coreAddress != router && coreAddress != address(vm));
         vm.assume(coreAddress != 0x000000000000000000636F6e736F6c652e6c6f67);
-        bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
+        bytes memory initcode = vm.parseJsonBytes(vm.readFile(vm.envOr("ROUTER_ARTIFACT", string("out/YulRouter.yul/YulRouter.json"))), ".bytecode.object");
         bytes memory code = bytes.concat(initcode, abi.encode(coreAddress));
         address deployed;
         assembly ("memory-safe") { deployed := create(0, add(code, 32), mload(code)) }
@@ -1934,7 +1934,7 @@ contract YulRouterTest is Test {
     }
 
     function test_DeploymentGas() external {
-        bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
+        bytes memory initcode = vm.parseJsonBytes(vm.readFile(vm.envOr("ROUTER_ARTIFACT", string("out/YulRouter.yul/YulRouter.json"))), ".bytecode.object");
         bytes memory code = bytes.concat(initcode, abi.encode(CORE_ADDRESS));
         address deployed;
         uint256 gasBefore = gasleft();
@@ -1963,7 +1963,7 @@ contract YulRouterTest is Test {
     }
 
     function _deployRouter() private returns (address deployed) {
-        bytes memory initcode = vm.parseJsonBytes(vm.readFile("out/YulRouter.yul/YulRouter.json"), ".bytecode.object");
+        bytes memory initcode = vm.parseJsonBytes(vm.readFile(vm.envOr("ROUTER_ARTIFACT", string("out/YulRouter.yul/YulRouter.json"))), ".bytecode.object");
         bytes memory code = bytes.concat(initcode, abi.encode(CORE_ADDRESS));
 
         assembly ("memory-safe") {
